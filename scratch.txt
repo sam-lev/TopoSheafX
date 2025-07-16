@@ -1,7 +1,0 @@
-### TO DO
-
-## June 9th 2025
-    - implement higher order message passing as separate message passing scheme
-    - double check MUTAG results
-    - double check synthetic combinitorial complex
-    - build environment with CUDA for Raspberry Pi 5
