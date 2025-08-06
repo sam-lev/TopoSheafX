@@ -1,7 +1,7 @@
 # copresheaf.py
 import torch
 import torch.nn as nn
-
+from torch_scatter import scatter_add
 class CopresheafMap(nn.Module):
     """
     Implements a copresheaf morphism for message passing on directed complexes.
@@ -163,3 +163,79 @@ class CopresheafHigherOrderMap(nn.Module):
         combined = torch.cat(aggregated, dim=-1)  # Stack [⊕_1, ..., ⊕_n]
         fused = self.combine(combined)            # ⓧ(⊕_1, ..., ⊕_n)
         return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
+
+
+
+
+class CopresheafMessagePassing(nn.Module):
+    """
+    Message passing layer where each edge has its own local transformation (copresheaf morphism).
+
+    Args:
+        in_channels (int): Dim of input node features.
+        out_channels (int): Dim of output node features.
+        edge_index (LongTensor): [2, num_edges] tensor of edge indices.
+        edge_mlp_factory (Callable): function that returns a new MLP for each edge.
+    """
+    def __init__(self, in_channels, out_channels, edge_index, edge_mlp_factory):
+        super().__init__()
+        self.edge_index = edge_index
+        num_edges = edge_index.size(1)
+
+        # Create a module list of local maps (MLPs), one per edge
+        self.edge_mlps = nn.ModuleList([
+            edge_mlp_factory(in_channels, out_channels) for _ in range(num_edges)
+        ])
+
+    def forward(self, x):
+        """
+        Forward pass.
+
+        Args:
+            x (Tensor): Node features, shape [num_nodes, in_channels].
+
+        Returns:
+            Tensor: Updated node features, shape [num_nodes, out_channels].
+        """
+        row, col = self.edge_index # source, target
+        messages = []
+
+        for k in range(self.edge_index.size(1)):
+            source_node = row[k]
+            mlp = self.edge_mlps[k]
+            message = mlp(x[source_node].unsqueeze(0)) # shape [1, out_channels]
+            messages.append(message)
+
+        messages = torch.cat(messages, dim=0) # shape [num_edges, out_channels]
+
+        # Aggregate messages at each target node
+        out = scatter_add(messages, col, dim=0, dim_size=x.size(0)) # [num_nodes, out_channels]
+        return out
+
+
+
+
+def make_edge_mlp(in_channels, out_channels):
+    return nn.Sequential(
+        nn.Linear(in_channels, out_channels),
+        nn.ReLU(),
+        nn.Linear(out_channels, out_channels)
+    )
+
+# Setup
+edge_index = torch.tensor([
+    [0, 1, 2, 3, 1, 2], # source
+    [1, 2, 3, 0, 0, 1] # target
+])
+
+x = torch.randn(4, 8) # 4 nodes, 8-dim features
+
+copresheaf_layer = CopresheafMessagePassing(
+    in_channels=8,
+    out_channels=16,
+    edge_index=edge_index,
+    edge_mlp_factory=make_edge_mlp
+)
+
+out = copresheaf_layer(x)
+print(out.shape) # [4, 16]
