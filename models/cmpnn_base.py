@@ -63,7 +63,11 @@ class CMPNNLayer(MessagePassing):
             h_src = x[row]
             h_tgt = x[col]
             messages = self.copresheaf_maps[i](h_src, h_tgt, edge_attr)
-            aggr = self.copresheaf_maps[i].aggregate_messages(messages, col, x.size(0))
+            # old implementation
+            # aggr = self.copresheaf_maps[i].aggregate_messages(messages, col, x.size(0))
+
+            # aggregate messages with scatter, allows for other aggregation approaches (change reduce)
+            aggr = self.copresheaf_maps[i].aggregate_messages(messages, col, x.size(0), reduce='sum')
             updated = self.copresheaf_maps[i].update_node(x, aggr)
             all_updates.append(updated)
 
@@ -259,7 +263,14 @@ class SheafTransformerLayer(MessagePassing):
         messages = self.map(h_src, h_tgt, edge_attr)  # [num_edges, out_dim]
         M = messages.view(-1, 1, self.out_dim).expand(-1, self.heads, -1) * attn_weights.unsqueeze(-1)
 
+        # old implementation
+        # out = self.map.aggregate_messages(
+        #     M.view(-1, self.heads * self.out_dim), col, x.size(0)
+        # )
+
+        # aggregate per edge, use of scatter for efficiency and allows for other aggregation
+        # approaches (change reduce)
         out = self.map.aggregate_messages(
-            M.view(-1, self.heads * self.out_dim), col, x.size(0)
+            M.view(-1, self.heads * self.out_dim), col, x.size(0), reduce='sum'
         )
         return self.out_proj(out)
