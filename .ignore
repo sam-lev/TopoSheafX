@@ -8,17 +8,32 @@ venv/
 ./logs/
 ./_pycache_/
 --pycache__/
+__pycache__/
+.DS_Store
+.DS_Store/
+
+# Byte-compiled Python files
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environments
+.env/
+.venv/
 
 # data but keep folder
 dataset/*/
 
-# for mlp init
-
+# saved models
 # results
 
 # logs
 ./logs/*
 *.json
+
+# personal notes
+notes.txt
+./notes.txt
 #
 # timing/checking implementations with mprof prior infrastructure of algorithms
 #

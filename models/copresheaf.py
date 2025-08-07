@@ -90,6 +90,7 @@ class CopresheafMap(nn.Module):
         rho_output = self.rho_map(rho_input)
         return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
 
+    # old implementation
     # def aggregate_messages(self, messages, index, num_nodes):
     #     """
     #     Aggregates messages per node using cumulative sum ⊕.
@@ -274,7 +275,7 @@ copresheaf_layer = CopresheafMessagePassing(
     in_channels=8,
     out_channels=16,
     edge_index=edge_index,
-    edge_mlp_factory=mlp_factory,
+    edge_map_factory=mlp_factory,
 )
 
 out = copresheaf_layer(x)
