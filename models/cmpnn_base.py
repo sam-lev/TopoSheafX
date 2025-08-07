@@ -1,5 +1,23 @@
 # cmpnn_base.py
-import torch
+"""
+cmpnn_base.py
+
+Core architecture classes for CMPNN and CHOMPNN models using Copresheaf-based message passing.
+
+Usage:
+-------
+>>> import torch
+>>> from models.cmpnn_base import CMPNN, CHOMPNN
+>>> x = torch.randn(6, 8)
+>>> edge_index = torch.tensor([[0, 1, 2], [1, 2, 3]])
+>>> batch = torch.tensor([0, 0, 0, 1, 1, 1])
+>>> model = CMPNN(in_dim=8, hidden_dim=16, out_dim=3)
+>>> out = model(x, [edge_index], batch)
+
+>>> chom = CHOMPNN(in_dim=8, hidden_dim=16, out_dim=3)
+>>> out2 = chom(x, [edge_index], batch)
+"""
+
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing

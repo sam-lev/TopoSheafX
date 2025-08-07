@@ -1,4 +1,27 @@
 # copresheaf.py
+"""
+copresheaf.py
+
+Copresheaf-based message passing components for graph and cell complex neural networks.
+Implements local copresheaf morphisms and aggregation rules as described in
+"Copresheaf Topological Neural Networks" Hajij et. al.
+
+Usage:
+-------
+>>> import torch
+>>> from models.copresheaf import CopresheafMap, CopresheafHigherOrderMap
+>>> x = torch.randn(4, 8)  # 4 nodes, 8-dimensional features
+>>> edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]])
+>>> model = CopresheafMap(8, 16)
+>>> h_src, h_tgt = x[edge_index[0]], x[edge_index[1]]
+>>> messages = model(h_src, h_tgt)
+>>> agg = model.aggregate_messages(messages, edge_index[1], num_nodes=4)
+
+>>> # Higher-order message passing
+>>> model_ho = CopresheafHigherOrderMap(8, 16, num_neighborhoods=1)
+>>> out = model_ho(x, [edge_index])
+"""
+
 import torch
 import torch.nn as nn
 from torch_scatter import scatter_add
