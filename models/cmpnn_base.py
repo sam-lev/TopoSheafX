@@ -241,11 +241,12 @@ class SheafTransformerLayer(MessagePassing):
         edge_attr_dim (int): Edge feature dimensionality
         heads (int): Number of attention heads (default: 1)
     """
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0, heads=1):
+    def __init__(self, in_dim, out_dim, edge_attr_dim=0, heads=1, dropout=0.0):
         super().__init__(aggr=None)
         self.heads = heads
         self.in_dim = in_dim
         self.out_dim = out_dim
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
         self.map = CopresheafMap(in_dim, out_dim, edge_attr_dim=edge_attr_dim)
 
@@ -276,6 +277,7 @@ class SheafTransformerLayer(MessagePassing):
 
         attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)  # scaled dot-product
         attn_weights = self.softmax(attn_logits)  # attention weights per head [num_edges, heads]
+        attn_weights = self.dropout(attn_weights)  # apply dropout to attention
 
         # Transport messages using copresheaf map ρ then apply attention
         messages = self.map(h_src, h_tgt, edge_attr)  # [num_edges, out_dim]

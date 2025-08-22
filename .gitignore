@@ -12,6 +12,7 @@ __pycache__/
 .DS_Store
 .DS_Store/
 
+
 # Byte-compiled Python files
 *.pyc
 *.pyo

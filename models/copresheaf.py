@@ -26,6 +26,8 @@ import torch
 import torch.nn as nn
 from torch_scatter import scatter_add
 from torch_scatter import scatter
+from utils.guards import _same_device
+from utils.guards import _check_index
 
 def mlp_factory(dim_in: int, dim_out: int, mlp_type='lin_lrelu_lin'):
     if mlp_type == 'lin':
@@ -103,9 +105,30 @@ class CopresheafMap(nn.Module):
         Returns:
             Tensor: Output messages [num_edges, out_dim]
         """
+        # if edge_attr is not None:
+        #     if not isinstance(edge_attr, torch.Tensor):
+        #         raise TypeError(f"Expected edge_attr to be a Tensor or None, but got {type(edge_attr)}.")
+        #     rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
+        # else:
+        #     rho_input = torch.cat([h_src, h_tgt], dim=-1)
+        #
+        # rho_output = self.rho_map(rho_input)
+        # return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
+
+        _same_device(h_src, h_tgt, edge_attr if edge_attr is not None else h_src)
+        if h_src.dim() != 2 or h_tgt.dim() != 2:
+            raise ValueError("h_src and h_tgt must be [num_edges, in_dim].")
+        if h_src.size(0) != h_tgt.size(0):
+            raise ValueError("h_src and h_tgt must have the same num_edges.")
+        if h_src.size(1) != self.in_dim or h_tgt.size(1) != self.in_dim:
+            raise ValueError(f"Expected in_dim={self.in_dim} for h_src/h_tgt.")
+
         if edge_attr is not None:
-            if not isinstance(edge_attr, torch.Tensor):
-                raise TypeError(f"Expected edge_attr to be a Tensor or None, but got {type(edge_attr)}.")
+            if edge_attr.dim() != 2 or edge_attr.size(0) != h_src.size(0):
+                raise ValueError("edge_attr must be [num_edges, edge_attr_dim].")
+            if edge_attr.size(1) != self.edge_attr_dim:
+                raise ValueError(f"edge_attr_dim mismatch (got {edge_attr.size(1)}, "
+                                 f"expected {self.edge_attr_dim}).")
             rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
         else:
             rho_input = torch.cat([h_src, h_tgt], dim=-1)
@@ -145,6 +168,10 @@ class CopresheafMap(nn.Module):
         Returns:
             Tensor: [num_nodes, out_dim]
         """
+        _check_index(index, num_nodes, name="target index (col)")
+        _same_device(messages, index)
+        if reduce not in {"sum","mean","max"}:
+            raise ValueError("reduce must be 'sum', 'mean', or 'max'.")
         return scatter(messages, index, dim=0, dim_size=num_nodes, reduce=reduce)
 
     def update_node(self, h_x, aggr_msg):
@@ -213,19 +240,46 @@ class CopresheafHigherOrderMap(nn.Module):
         Returns:
             Tensor: Updated node features h_x^{l+1} [num_nodes, out_dim]
         """
+        # if edge_attr_list is None:
+        #     edge_attr_list = [None] * len(edge_index_list)
+        #
+        # aggregated = []
+        # for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
+        #     row, col = edge_index  # edge y → x: src = y, tgt = x
+        #     h_src, h_tgt = x[row], x[col]
+        #     messages = self.maps[i](h_src, h_tgt, edge_attr)
+        #     agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
+        #     aggregated.append(agg)
+        #
+        # combined = torch.cat(aggregated, dim=-1)  # Stack [⊕_1, ..., ⊕_n]
+        # fused = self.combine(combined)            # ⓧ(⊕_1, ..., ⊕_n)
+        # return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
+
+
         if edge_attr_list is None:
             edge_attr_list = [None] * len(edge_index_list)
+        if len(edge_index_list) != len(self.maps):
+            raise ValueError("num_neighborhoods mismatch with edge_index_list length.")
 
         aggregated = []
         for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
-            row, col = edge_index  # edge y → x: src = y, tgt = x
+            if edge_index.dtype != torch.long:
+                raise TypeError("edge_index must be torch.long.")
+            if edge_index.size(0) != 2:
+                raise ValueError("edge_index must be shape [2, num_edges].")
+
+            row, col = edge_index                              # edge y → x: src = y, tgt = x
+            _check_index(row, x.size(0), "row (src)")
+            _check_index(col, x.size(0), "col (tgt)")
+            _same_device(x, edge_index, edge_attr if edge_attr is not None else x)
+
             h_src, h_tgt = x[row], x[col]
             messages = self.maps[i](h_src, h_tgt, edge_attr)
             agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
             aggregated.append(agg)
 
-        combined = torch.cat(aggregated, dim=-1)  # Stack [⊕_1, ..., ⊕_n]
-        fused = self.combine(combined)            # ⓧ(⊕_1, ..., ⊕_n)
+        combined = torch.cat(aggregated, dim=-1)    # Stack [⊕_1, ..., ⊕_n]
+        fused = self.combine(combined)              # ⓧ(⊕_1, ..., ⊕_n)
         return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
 
 
@@ -243,13 +297,15 @@ class CopresheafMessagePassing(nn.Module):
     """
     def __init__(self, in_channels, out_channels, edge_index, edge_map_factory):
         super().__init__()
+        if edge_index.dtype != torch.long or edge_index.size(0) != 2:
+            raise ValueError("edge_index must be [2, num_edges] with dtype torch.long.")
         self.edge_index = edge_index
         num_edges = edge_index.size(1)
 
         # Create a module list of local maps (MLPs), one per edge
-        self.edge_mlps = nn.ModuleList([
-            edge_map_factory(in_channels, out_channels) for _ in range(num_edges)
-        ])
+        self.edge_mlps = nn.ModuleList(
+            [edge_map_factory(in_channels, out_channels) for _ in range(num_edges)]
+        )
 
     def forward(self, x):
         """
@@ -261,12 +317,18 @@ class CopresheafMessagePassing(nn.Module):
         Returns:
             Tensor: Updated node features, shape [num_nodes, out_channels].
         """
-        row, col = self.edge_index # source, target
-        messages = []
+        row, col = self.edge_index
+        _check_index(row, x.size(0), "row (src)")
+        _check_index(col, x.size(0), "col (tgt)")
+        _same_device(x, self.edge_index)
 
+        # Apply per-edge local maps
+        messages = []
         for k in range(self.edge_index.size(1)):
             source_node = row[k]
             mlp = self.edge_mlps[k]
+            if next(mlp.parameters()).device != x.device:
+                mlp.to(x.device)
             message = mlp(x[source_node].unsqueeze(0)) # shape [1, out_channels]
             messages.append(message)
 
