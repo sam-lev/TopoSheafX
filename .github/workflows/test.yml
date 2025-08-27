@@ -59,7 +59,12 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml
 
+      - name: Verify coverage.xml exists
+        run: |
+          ls -l coverage.xml && head -n 3 coverage.xml
+
       - name: Upload coverage to Codecov
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}   # required for private or protected branches
