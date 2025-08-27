@@ -28,6 +28,28 @@ jobs:
           pip install -r requirements.txt || true
           pip install pytest pytest-cov
 
+      - name: Install PyTorch (CPU wheels)
+        run: |
+          python -m pip install --upgrade pip
+          # pin or use the range you support; CPU wheels avoid CUDA hassles on GHA
+          pip install "torch==2.3.*" --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install torch-scatter (match the installed torch)
+        run: |
+          TORCH=$(python - <<'PY'
+          import torch
+          print(torch.__version__.split('+')[0])
+          PY
+          )
+          echo "Installing torch-scatter for torch ${TORCH} (CPU)"
+          pip install "torch-scatter>=2.1.0" -f https://data.pyg.org/whl/torch-${TORCH}+cpu.html
+
+      - name: Install project + test deps
+        run: |
+          pip install -e . || true
+          pip install -r requirements.txt || true
+          pip install pytest pytest-cov
+
       - name: Run tests with coverage
         run: |
           pytest \
