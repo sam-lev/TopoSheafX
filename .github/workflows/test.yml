@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ "sam" ] # add "main" when needed
+    branches: [ "sam", "main" ] # add "main" when needed
   pull_request:
-    branches: [ "sam" ] # add "main" when needed
+    branches: [ "sam", "main" ] # add "main" when needed
 
 jobs:
   test:
