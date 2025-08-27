@@ -1,6 +1,5 @@
 # tests/test_copresheaf_ext.py
 import torch
-import pytest
 from models.copresheaf import CopresheafMap, CopresheafHigherOrderMap
 
 def test_copresheaf_map_all_aggregators(toy_edges_1):
