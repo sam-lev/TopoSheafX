@@ -19,7 +19,6 @@ Usage:
 """
 
 import torch.nn as nn
-import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import scatter
 from models.copresheaf import CopresheafMap
@@ -276,7 +275,8 @@ class SheafTransformerLayer(MessagePassing):
         V = self.value(h_src).view(-1, self.heads, self.out_dim)
 
         attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)  # scaled dot-product
-        attn_weights = self.softmax(attn_logits)  # attention weights per head [num_edges, heads]
+        attn_weights = self.softmax(attn_logits, dim=1)  # attention weights per head [num_edges, heads] [E, H]
+        attn_weights = (attn_weights.unsqueeze(-1) * V).sum(dim=1)  # [E, out_dim]
         attn_weights = self.dropout(attn_weights)  # apply dropout to attention
 
         # Transport messages using copresheaf map ρ then apply attention

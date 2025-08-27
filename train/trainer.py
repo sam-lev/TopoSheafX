@@ -90,7 +90,6 @@ def evaluate(model, dataloader, device):
     """
     model.eval()
     total_correct = 0
-    total = 0
     total_graphs = 0
 
     for data in dataloader:

@@ -24,7 +24,6 @@ Usage:
 
 import torch
 import torch.nn as nn
-from torch_scatter import scatter_add
 from torch_scatter import scatter
 from utils.guards import _same_device
 from utils.guards import _check_index
