@@ -78,5 +78,6 @@ jobs:
           files: ./coverage.xml
           flags: unittests
           fail_ci_if_error: true
+          verbose: true
           # For private repos, set this secret in your repo settings:
           # token: ${{ secrets.CODECOV_TOKEN }}

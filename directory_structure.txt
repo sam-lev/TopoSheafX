@@ -1,0 +1,97 @@
+.
+├── .coverage
+├── .github
+│   └── workflows
+│       └── ci.yml
+├── .gitignore
+├── .idea
+│   ├── .gitignore
+│   ├── CMPNN.iml
+│   ├── copresheaf_nn.iml
+│   ├── inspectionProfiles
+│   │   └── profiles_settings.xml
+│   ├── misc.xml
+│   ├── modules.xml
+│   ├── vcs.xml
+│   └── workspace.xml
+├── .pytest_cache
+│   ├── .gitignore
+│   ├── CACHEDIR.TAG
+│   ├── README.md
+│   └── v
+│       └── cache
+│           ├── lastfailed
+│           └── nodeids
+├── __init__.py
+├── config
+│   ├── __init__.py
+│   ├── cmpnn_environment.yml
+│   ├── cmpnn_rpi5_hailo_environment.yml
+│   └── torchgeometric.yml
+├── copresheaf_nn.egg-info
+│   ├── PKG-INFO
+│   ├── SOURCES.txt
+│   ├── dependency_links.txt
+│   ├── requires.txt
+│   └── top_level.txt
+├── data
+│   ├── .DS_Store
+│   ├── MUTAG
+│   │   ├── processed
+│   │   │   ├── data.pt
+│   │   │   ├── pre_filter.pt
+│   │   │   └── pre_transform.pt
+│   │   └── raw
+│   │       ├── MUTAG_A.txt
+│   │       ├── MUTAG_edge_labels.txt
+│   │       ├── MUTAG_graph_indicator.txt
+│   │       ├── MUTAG_graph_labels.txt
+│   │       ├── MUTAG_node_labels.txt
+│   │       └── README.txt
+│   ├── __init__.py
+│   └── graph_datasets.py
+├── directory_structure.txt
+├── examples
+├── models
+│   ├── __init__.py
+│   ├── cmpnn_base.py
+│   └── copresheaf.py
+├── notes.txt
+├── ops
+│   └── __init__.py
+├── package_layout.txt
+├── pytest.ini
+├── pythonProject
+│   └── .idea
+│       ├── .gitignore
+│       ├── inspectionProfiles
+│       │   └── profiles_settings.xml
+│       ├── misc.xml
+│       ├── modules.xml
+│       ├── pythonProject.iml
+│       └── workspace.xml
+├── scratch.txt
+├── scripts
+│   ├── __init__.py
+│   └── train_model.py
+├── setup.py
+├── test_mutag_loader.py
+├── tests
+│   ├── conftest.py
+│   ├── test_cmpnn.py
+│   ├── test_copresheaf.py
+│   ├── test_copresheaf_ext.py
+│   ├── test_layers_parametrized.py
+│   ├── test_models_coverage.py
+│   ├── test_trainer_loops.py
+│   ├── test_trainer_smoke.py
+│   └── test_transformer_layer_ext.py
+├── train
+│   ├── __init__.py
+│   └── trainer.py
+└── utils
+    ├── __init__.py
+    ├── debug.py
+    └── guards.py
+
+24 directories, 71 files
