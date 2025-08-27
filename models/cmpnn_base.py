@@ -21,6 +21,7 @@ Usage:
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import scatter
+from torch_geometric.utils import softmax as segment_softmax
 from models.copresheaf import CopresheafMap
 from models.copresheaf import CopresheafHigherOrderMap
 
@@ -259,38 +260,41 @@ class SheafTransformerLayer(MessagePassing):
     def forward(self, x, edge_index, edge_attr=None):
         """
         Args:
-            x (Tensor): Node features [num_nodes, in_dim]
-            edge_index (Tensor): Directed edges [2, num_edges]
-            edge_attr (Tensor): Optional edge attributes [num_edges, edge_attr_dim]
-
+            x (Tensor): Node features [N, in_dim]
+            edge_index (LongTensor): Directed edges [2, E] (row=src, col=dst)
+            edge_attr (Tensor, optional): Edge features [E, edge_attr_dim]
         Returns:
-            Tensor: Updated node features [num_nodes, out_dim]
+            Tensor: Updated node features [N, out_dim]
         """
-        row, col = edge_index  # y, x
-        h_src, h_tgt = x[row], x[col]
+        row, col = edge_index  # row: src indices, col: dst indices
+        h_src, h_tgt = x[row], x[col]  # [E, in_dim] each
 
-        # Linear projections for attention
-        K = self.key(h_src).view(-1, self.heads, self.out_dim)
-        Q = self.query(h_tgt).view(-1, self.heads, self.out_dim)
-        V = self.value(h_src).view(-1, self.heads, self.out_dim)
+        # Linear projections per head
+        K = self.key(h_src).view(-1, self.heads, self.out_dim)  # [E, H, d]
+        Q = self.query(h_tgt).view(-1, self.heads, self.out_dim)  # [E, H, d]
 
-        attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)  # scaled dot-product
-        attn_weights = self.softmax(attn_logits, dim=1)  # attention weights per head [num_edges, heads] [E, H]
-        attn_weights = (attn_weights.unsqueeze(-1) * V).sum(dim=1)  # [E, out_dim]
-        attn_weights = self.dropout(attn_weights)  # apply dropout to attention
+        # Scaled dot-product attention logits per edge & head
+        attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)  # [E, H]
 
-        # Transport messages using copresheaf map ρ then apply attention
-        messages = self.map(h_src, h_tgt, edge_attr)  # [num_edges, out_dim]
-        M = messages.view(-1, 1, self.out_dim).expand(-1, self.heads, -1) * attn_weights.unsqueeze(-1)
+        # Segment softmax over incoming edges of each *target node* for each head.
+        # Flatten heads, repeat dst index accordingly, softmax by col.
+        logits_flat = attn_logits.reshape(-1)  # [E*H]
+        index_flat = col.repeat_interleave(self.heads)  # [E*H]
+        alpha = segment_softmax(logits_flat, index_flat, num_nodes=x.size(0)).view(-1, self.heads)  # [E, H]
+        alpha = self.dropout(alpha)  # dropout on attention probs
 
-        # old implementation
-        # out = self.map.aggregate_messages(
-        #     M.view(-1, self.heads * self.out_dim), col, x.size(0)
-        # )
+        # Copresheaf transport (edge-wise message in value space)
+        messages = self.map(h_src, h_tgt, edge_attr)  # [E, d]
 
-        # aggregate per edge, use of scatter for efficiency and allows for other aggregation
-        # approaches (change reduce)
+        # Broadcast messages over heads and weight by attention per head
+        M = messages.unsqueeze(1).expand(-1, self.heads, -1)  # [E, H, d]
+        M = M * alpha.unsqueeze(-1)  # [E, H, d]
+
+        # Aggregate head-weighted messages to target nodes
+        # -> [N, H*d], using your sheaf aggregator (sum by default here)
         out = self.map.aggregate_messages(
-            M.view(-1, self.heads * self.out_dim), col, x.size(0), reduce='sum'
+            M.reshape(-1, self.heads * self.out_dim), col, x.size(0), reduce="sum"
         )
+
+        # Final projection mixes heads -> [N, out_dim]
         return self.out_proj(out)
