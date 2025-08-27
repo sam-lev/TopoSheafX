@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, "sam" ]
+    branches: [ "sam" ] # add main, master when needed
   pull_request:
-    branches: [ "**", "sam" ]
+    branches: [ "sam" ] # add "**" when needed
 
 jobs:
   lint:
