@@ -1,6 +1,6 @@
-# copresheaf.py
+# conv.py
 """
-copresheaf.py
+conv.py
 
 Copresheaf-based message passing components for graph and cell complex neural networks.
 Implements local copresheaf morphisms and aggregation rules as described in
@@ -9,7 +9,6 @@ Implements local copresheaf morphisms and aggregation rules as described in
 Usage:
 -------
 >>> import torch
->>> from models.copresheaf import Conv, HigherOrderConv
 >>> x = torch.randn(4, 8)  # 4 nodes, 8-dimensional features
 >>> edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]])
 >>> model = Conv(8, 16)
@@ -24,241 +23,489 @@ Usage:
 
 import torch
 import torch.nn as nn
-from torch_scatter import scatter
+from toposheafx.base.message_passing import MessagePassing, HigherOrderMessagePassing
 from toposheafx.utils.guards import _same_device
 from toposheafx.utils.guards import _check_index
 
 
-
-class Conv(nn.Module):
+class Conv(MessagePassing):
     """
-    Implements a copresheaf morphism for message passing on directed complexes.
+    Copresheaf morphism for message passing using the custom MessagePassing framework.
 
-    Implements components described in Proposition 1:
-    - rho: F(y) → F(x), a learnable transport map between feature spaces of incident cells
-    - alpha: combines h_x and transported h_y (i.e., alpha(h_x, rho(h_y)))
-    - beta: updates h_x using the cumulative sum ⊕_y alpha(h_x, rho(h_y))
+    This class uses the custom MessagePassing base class from toposheafx.base.message_passing
+    and provides the specific copresheaf morphism factories for the mathematical components.
 
     Args:
         in_dim (int): Dimensionality of node input features F(x).
         out_dim (int): Dimensionality of the transformed message output.
         edge_attr_dim (int): Optional dimension of edge attributes.
+        aggr (str): Aggregation method ('sum', 'mean', 'max').
+        bias (bool): Whether to add learnable bias.
     """
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0):
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.edge_attr_dim = edge_attr_dim
 
-        # Learnable copresheaf transport morphism: ρ : F(y) → F(x)
-        # Takes h_y, h_x, and optional edge_attr and produces ρ(h_y; h_x)
+    def __init__(self, in_dim, out_dim, edge_attr_dim=0, aggr='sum', bias=True, **kwargs):
+        super().__init__(
+            in_dim=in_dim,
+            out_dim=out_dim,
+            edge_attr_dim=edge_attr_dim,
+            aggr=aggr,
+            copresheaf_map_factory=self._conv_copresheaf_factory,
+            message_factory=self._conv_message_factory,
+            update_factory=self._conv_update_factory,
+            **kwargs
+        )
+
+        # Optional bias
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def _conv_copresheaf_factory(self, in_dim: int, out_dim: int, edge_attr_dim: int):
+        """
+        Factory for the copresheaf morphism ρ : F(y) → F(x).
+        This matches the rho_map from your original Conv class.
+        """
         rho_input_dim = 2 * in_dim + edge_attr_dim
-        self.rho_map = nn.Sequential(
+        return nn.Sequential(
             nn.Linear(rho_input_dim, out_dim),
             nn.Tanh()
         )
 
-        # Message function α: combines h_x and ρ(h_y)
-        self.alpha = nn.Sequential(
+    def _conv_message_factory(self, in_dim: int, out_dim: int):
+        """
+        Factory for the message function α: combines h_x and ρ(h_y).
+        This matches the alpha from your original Conv class.
+        """
+        return nn.Sequential(
             nn.Linear(in_dim + out_dim, out_dim),
             nn.ReLU()
         )
 
-        # Update function β: takes h_x and the aggregated α-messages
-        self.Beta = nn.Sequential(
+    def _conv_update_factory(self, in_dim: int, out_dim: int):
+        """
+        Factory for the update function β: takes h_x and aggregated messages.
+        This matches the Beta from your original Conv class.
+        """
+        return nn.Sequential(
             nn.Linear(in_dim + out_dim, out_dim),
             nn.ReLU(),
             nn.Linear(out_dim, out_dim)
         )
 
-    def forward(self, h_src, h_tgt, edge_attr=None):
+    def reset_parameters(self):
+        """Initialize parameters using Xavier uniform initialization."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x, edge_index, edge_attr=None, size=None):
         """
-        Computes directional messages α(h_x, ρ(h_y)) per edge.
+        Forward pass implementing copresheaf message passing.
 
         Args:
-            h_src (Tensor): Source node features h_y [num_edges, in_dim]
-            h_tgt (Tensor): Target node features h_x [num_edges, in_dim]
-            edge_attr (Tensor or None): Optional edge attributes [num_edges, edge_attr_dim]
-
-        Returns:
-            Tensor: Output messages [num_edges, out_dim]
-        """
-        # if edge_attr is not None:
-        #     if not isinstance(edge_attr, torch.Tensor):
-        #         raise TypeError(f"Expected edge_attr to be a Tensor or None, but got {type(edge_attr)}.")
-        #     rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
-        # else:
-        #     rho_input = torch.cat([h_src, h_tgt], dim=-1)
-        #
-        # rho_output = self.rho_map(rho_input)
-        # return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
-
-        _same_device(h_src, h_tgt, edge_attr if edge_attr is not None else h_src)
-        if h_src.dim() != 2 or h_tgt.dim() != 2:
-            raise ValueError("h_src and h_tgt must be [num_edges, in_dim].")
-        if h_src.size(0) != h_tgt.size(0):
-            raise ValueError("h_src and h_tgt must have the same num_edges.")
-        if h_src.size(1) != self.in_dim or h_tgt.size(1) != self.in_dim:
-            raise ValueError(f"Expected in_dim={self.in_dim} for h_src/h_tgt.")
-
-        if edge_attr is not None:
-            if edge_attr.dim() != 2 or edge_attr.size(0) != h_src.size(0):
-                raise ValueError("edge_attr must be [num_edges, edge_attr_dim].")
-            if edge_attr.size(1) != self.edge_attr_dim:
-                raise ValueError(f"edge_attr_dim mismatch (got {edge_attr.size(1)}, "
-                                 f"expected {self.edge_attr_dim}).")
-            rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
-        else:
-            rho_input = torch.cat([h_src, h_tgt], dim=-1)
-
-        rho_output = self.rho_map(rho_input)
-        return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
-
-    # old implementation
-    # def aggregate_messages(self, messages, index, num_nodes):
-    #     """
-    #     Aggregates messages per node using cumulative sum ⊕.
-    #
-    #     Args:
-    #         messages (Tensor): Message values [num_edges, out_dim]
-    #         index (Tensor): Target indices (node IDs) for each message [num_edges]
-    #         num_nodes (int): Total number of nodes in the graph
-    #
-    #     Returns:
-    #         Tensor: Aggregated messages [num_nodes, out_dim]
-    #     """
-    #     return torch.zeros(num_nodes, self.out_dim, device=messages.device).scatter_add_(
-    #         dim=0,
-    #         index=index.unsqueeze(-1).expand(-1, messages.size(-1)),
-    #         src=messages
-    #     )
-
-    def aggregate_messages(self, messages, index, num_nodes, reduce='sum'): #reduce='sum', 'mean', 'max'
-        """
-        Aggregates messages per node using torch_scatter.
-
-        Args:
-            messages (Tensor): [num_edges, out_dim]
-            index (Tensor): [num_edges]
-            num_nodes (int): number of nodes
-            reduce (str): aggregation type: 'sum', 'mean', or 'max'
-
-        Returns:
-            Tensor: [num_nodes, out_dim]
-        """
-        _check_index(index, num_nodes, name="target index (col)")
-        _same_device(messages, index)
-        if reduce not in {"sum","mean","max"}:
-            raise ValueError("reduce must be 'sum', 'mean', or 'max'.")
-        return scatter(messages, index, dim=0, dim_size=num_nodes, reduce=reduce)
-
-    def update_node(self, h_x, aggr_msg):
-        """
-        Updates node representation via β(h_x, ⊕_y α(h_x, ρ(h_y))).
-
-        Args:
-            h_x (Tensor): Previous node features [num_nodes, in_dim]
-            aggr_msg (Tensor): Aggregated messages [num_nodes, out_dim]
+            x (Tensor): Node features [num_nodes, in_dim]
+            edge_index (Tensor): Edge indices [2, num_edges]
+            edge_attr (Tensor, optional): Edge attributes [num_edges, edge_attr_dim]
+            size (tuple, optional): Size of source and target nodes
 
         Returns:
             Tensor: Updated node features [num_nodes, out_dim]
         """
-        return self.Beta(torch.cat([h_x, aggr_msg], dim=-1))
+        # Use the parent MessagePassing forward method
+        out = super().forward(x, edge_index, edge_attr, size)
+
+        # Add bias if present
+        if self.bias is not None:
+            out = out + self.bias
+
+        return out
+
+    # Maintain backward compatibility with existing interface
+    def aggregate_messages(self, messages, index, num_nodes, reduce='sum'):
+        """
+        Legacy method for backward compatibility with existing code.
+        Delegates to the parent class's aggregate method.
+        """
+        return self.aggregate(messages, index, dim_size=num_nodes)
+
+    def update_node(self, h_x, aggr_msg):
+        """
+        Legacy method for backward compatibility with existing code.
+        Delegates to the parent class's update method.
+        """
+        return self.update(aggr_msg, h_x)
+
+#
+# class Conv(nn.Module):
+#     """
+#     Implements a copresheaf morphism for message passing on directed complexes.
+#
+#     Implements components described in Proposition 1:
+#     - rho: F(y) → F(x), a learnable transport map between feature spaces of incident cells
+#     - alpha: combines h_x and transported h_y (i.e., alpha(h_x, rho(h_y)))
+#     - beta: updates h_x using the cumulative sum ⊕_y alpha(h_x, rho(h_y))
+#
+#     Args:
+#         in_dim (int): Dimensionality of node input features F(x).
+#         out_dim (int): Dimensionality of the transformed message output.
+#         edge_attr_dim (int): Optional dimension of edge attributes.
+#     """
+#     def __init__(self, in_dim, out_dim, edge_attr_dim=0):
+#         super().__init__()
+#         self.in_dim = in_dim
+#         self.out_dim = out_dim
+#         self.edge_attr_dim = edge_attr_dim
+#
+#         # Learnable copresheaf transport morphism: ρ : F(y) → F(x)
+#         # Takes h_y, h_x, and optional edge_attr and produces ρ(h_y; h_x)
+#         rho_input_dim = 2 * in_dim + edge_attr_dim
+#         self.rho_map = nn.Sequential(
+#             nn.Linear(rho_input_dim, out_dim),
+#             nn.Tanh()
+#         )
+#
+#         # Message function α: combines h_x and ρ(h_y)
+#         self.alpha = nn.Sequential(
+#             nn.Linear(in_dim + out_dim, out_dim),
+#             nn.ReLU()
+#         )
+#
+#         # Update function β: takes h_x and the aggregated α-messages
+#         self.Beta = nn.Sequential(
+#             nn.Linear(in_dim + out_dim, out_dim),
+#             nn.ReLU(),
+#             nn.Linear(out_dim, out_dim)
+#         )
+#
+#     def forward(self, h_src, h_tgt, edge_attr=None):
+#         """
+#         Computes directional messages α(h_x, ρ(h_y)) per edge.
+#
+#         Args:
+#             h_src (Tensor): Source node features h_y [num_edges, in_dim]
+#             h_tgt (Tensor): Target node features h_x [num_edges, in_dim]
+#             edge_attr (Tensor or None): Optional edge attributes [num_edges, edge_attr_dim]
+#
+#         Returns:
+#             Tensor: Output messages [num_edges, out_dim]
+#         """
+#         # if edge_attr is not None:
+#         #     if not isinstance(edge_attr, torch.Tensor):
+#         #         raise TypeError(f"Expected edge_attr to be a Tensor or None, but got {type(edge_attr)}.")
+#         #     rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
+#         # else:
+#         #     rho_input = torch.cat([h_src, h_tgt], dim=-1)
+#         #
+#         # rho_output = self.rho_map(rho_input)
+#         # return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
+#
+#         _same_device(h_src, h_tgt, edge_attr if edge_attr is not None else h_src)
+#         if h_src.dim() != 2 or h_tgt.dim() != 2:
+#             raise ValueError("h_src and h_tgt must be [num_edges, in_dim].")
+#         if h_src.size(0) != h_tgt.size(0):
+#             raise ValueError("h_src and h_tgt must have the same num_edges.")
+#         if h_src.size(1) != self.in_dim or h_tgt.size(1) != self.in_dim:
+#             raise ValueError(f"Expected in_dim={self.in_dim} for h_src/h_tgt.")
+#
+#         if edge_attr is not None:
+#             if edge_attr.dim() != 2 or edge_attr.size(0) != h_src.size(0):
+#                 raise ValueError("edge_attr must be [num_edges, edge_attr_dim].")
+#             if edge_attr.size(1) != self.edge_attr_dim:
+#                 raise ValueError(f"edge_attr_dim mismatch (got {edge_attr.size(1)}, "
+#                                  f"expected {self.edge_attr_dim}).")
+#             rho_input = torch.cat([h_src, h_tgt, edge_attr], dim=-1)
+#         else:
+#             rho_input = torch.cat([h_src, h_tgt], dim=-1)
+#
+#         rho_output = self.rho_map(rho_input)
+#         return self.alpha(torch.cat([h_tgt, rho_output], dim=-1))
+#
+#     # old implementation
+#     # def aggregate_messages(self, messages, index, num_nodes):
+#     #     """
+#     #     Aggregates messages per node using cumulative sum ⊕.
+#     #
+#     #     Args:
+#     #         messages (Tensor): Message values [num_edges, out_dim]
+#     #         index (Tensor): Target indices (node IDs) for each message [num_edges]
+#     #         num_nodes (int): Total number of nodes in the graph
+#     #
+#     #     Returns:
+#     #         Tensor: Aggregated messages [num_nodes, out_dim]
+#     #     """
+#     #     return torch.zeros(num_nodes, self.out_dim, device=messages.device).scatter_add_(
+#     #         dim=0,
+#     #         index=index.unsqueeze(-1).expand(-1, messages.size(-1)),
+#     #         src=messages
+#     #     )
+#
+#     def aggregate_messages(self, messages, index, num_nodes, reduce='sum'): #reduce='sum', 'mean', 'max'
+#         """
+#         Aggregates messages per node using torch_scatter.
+#
+#         Args:
+#             messages (Tensor): [num_edges, out_dim]
+#             index (Tensor): [num_edges]
+#             num_nodes (int): number of nodes
+#             reduce (str): aggregation type: 'sum', 'mean', or 'max'
+#
+#         Returns:
+#             Tensor: [num_nodes, out_dim]
+#         """
+#         _check_index(index, num_nodes, name="target index (col)")
+#         _same_device(messages, index)
+#         if reduce not in {"sum","mean","max"}:
+#             raise ValueError("reduce must be 'sum', 'mean', or 'max'.")
+#         return scatter(messages, index, dim=0, dim_size=num_nodes, reduce=reduce)
+#
+#     def update_node(self, h_x, aggr_msg):
+#         """
+#         Updates node representation via β(h_x, ⊕_y α(h_x, ρ(h_y))).
+#
+#         Args:
+#             h_x (Tensor): Previous node features [num_nodes, in_dim]
+#             aggr_msg (Tensor): Aggregated messages [num_nodes, out_dim]
+#
+#         Returns:
+#             Tensor: Updated node features [num_nodes, out_dim]
+#         """
+#         return self.Beta(torch.cat([h_x, aggr_msg], dim=-1))
 
 
-class HigherOrderConv(nn.Module):
+class HigherOrderConv(HigherOrderMessagePassing):
     """
-    Implements higher-order copresheaf-based message passing (Proposition 3).
+    Higher-order copresheaf-based message passing using the custom HigherOrderMessagePassing.
 
-    For each vertex x, messages are computed for each neighborhood k = 1..n
-    (e.g., adjacency, incidence, co-boundary). Then, these are aggregated using:
-
-        ⓧ({⊕_y α_k(h_x, ρ_k(h_y))}) for k = 1 to n
-
-    Followed by an update function β that combines the result of ⓧ with h_x^l.
+    This class uses the HigherOrderMessagePassing base class and provides Conv instances
+    for each neighborhood, maintaining the same mathematical framework as your original code.
 
     Args:
         in_dim (int): Input feature dimension F(x)
         out_dim (int): Output feature dimension F'(x)
         edge_attr_dim (int): Dim of edge attributes per neighborhood
         num_neighborhoods (int): Number of neighborhood types
+        Edge_Map (class): Convolution class to use (default: Conv)
+        combine_method (str): How to combine neighborhoods ('concat', 'sum', 'mean')
+        aggr (str): Aggregation method for each neighborhood
+        bias (bool): Whether to add learnable bias
     """
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, Edge_Map=Conv):
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.num_neighborhoods = num_neighborhoods
 
-        # One copresheaf map per neighborhood (e.g., adjacency, higher-order face maps)
-        self.maps = nn.ModuleList([
-            Edge_Map(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
+    def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1,
+                 Edge_Map=None, combine_method='concat', aggr='sum', bias=True, **kwargs):
+
+        if Edge_Map is None:
+            Edge_Map = Conv
+
+        # Create factory function for the neighborhood layers
+        def neighborhood_factory():
+            return Edge_Map(in_dim, out_dim, edge_attr_dim, aggr=aggr, bias=False)
+
+        super().__init__(
+            in_dim=in_dim,
+            out_dim=out_dim,
+            edge_attr_dim=edge_attr_dim,
+            num_neighborhoods=num_neighborhoods,
+            aggr=aggr,
+            combine_method=combine_method,
+            **kwargs
+        )
+
+        # Replace the default neighborhood layers with our custom Conv layers
+        self.neighborhood_layers = nn.ModuleList([
+            neighborhood_factory() for _ in range(num_neighborhoods)
         ])
 
-        # Combination function ⓧ: merges [⊕_1, ⊕_2, ..., ⊕_n] into single vector
-        self.combine = nn.Sequential(
-            nn.Linear(num_neighborhoods * out_dim, out_dim),
-            nn.ReLU()
-        )
+        # Optional bias
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.register_parameter('bias', None)
 
-        # Final update function β(h_x, ⓧ(...))
-        self.Beta = nn.Sequential(
-            nn.Linear(in_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """Initialize parameters."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
 
     def forward(self, x, edge_index_list, edge_attr_list=None):
         """
-        Performs higher-order copresheaf message passing for each neighborhood.
+        Forward pass implementing higher-order copresheaf message passing (Proposition 3).
+
+        MATHEMATICAL EXECUTION:
+        ======================
+        This method executes the multi-step process described in Proposition 3:
+
+        Step 1: For each neighborhood k ∈ {1, ..., n}:
+                Compute ⊕_{y∈N_k(x)} α_k(h_x^l, ρ_k_{y→x}(h_y^l))
+
+        Step 2: Combine across neighborhoods:
+                ⋀_{k=1}^n (⊕ from Step 1)
+
+        Step 3: Final update:
+                h_x^{l+1} = β(h_x^l, result from Step 2)
+
+        ALGORITHMIC FLOW:
+        ================
+        1. PARALLEL PROCESSING: Each neighborhood is processed independently by
+           its corresponding Conv layer in self.neighborhood_layers
+
+        2. NEIGHBORHOOD AGGREGATION: Within each neighborhood k:
+           - Extract edges: edge_index_list[k]
+           - Extract attributes: edge_attr_list[k]
+           - Apply copresheaf message passing: Conv.forward()
+           - Result: ⊕_{y∈N_k(x)} α_k(h_x, ρ_k(h_y))
+
+        3. INTER-NEIGHBORHOOD COMBINATION: Merge results using ⋀:
+           - 'concat': [⊕_1, ⊕_2, ..., ⊕_n] (preserves all information)
+           - 'sum': ⊕_1 + ⊕_2 + ... + ⊕_n (equal weighting)
+           - 'mean': (⊕_1 + ⊕_2 + ... + ⊕_n) / n (normalized)
+
+        4. FINAL UPDATE: Apply β to get h_x^{l+1}
+
+        TOPOLOGICAL INTERPRETATION:
+        ==========================
+        Each neighborhood k represents a different topological relation:
+        - k=0: Adjacency (vertex-vertex connections)
+        - k=1: Incidence (vertex-edge connections)
+        - k=2: Co-boundary (edge-face connections)
+        - etc.
+
+        The parallel processing respects the independence of these relations
+        while the combination step ⋀ enables cross-scale information transfer.
+
+        ERROR HANDLING:
+        ==============
+        - Validates neighborhood count matches edge_index_list length
+        - Ensures proper tensor shapes and devices
+        - Handles optional edge attributes gracefully
 
         Args:
-            x (Tensor): Node features h_x [num_nodes, in_dim]
-            edge_index_list (List[Tensor]): List of edge_index tensors for n neighborhoods
-            edge_attr_list (List[Tensor or None], optional): List of edge attributes per neighborhood
+            x (Tensor): Node features [num_nodes, in_dim]
+            edge_index_list (List[Tensor]): List of edge indices for each neighborhood
+            edge_attr_list (List[Tensor], optional): List of edge attributes per neighborhood
 
         Returns:
-            Tensor: Updated node features h_x^{l+1} [num_nodes, out_dim]
+            Tensor: Updated node features [num_nodes, out_dim]
         """
-        # if edge_attr_list is None:
-        #     edge_attr_list = [None] * len(edge_index_list)
-        #
-        # aggregated = []
-        # for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
-        #     row, col = edge_index  # edge y → x: src = y, tgt = x
-        #     h_src, h_tgt = x[row], x[col]
-        #     messages = self.maps[i](h_src, h_tgt, edge_attr)
-        #     agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
-        #     aggregated.append(agg)
-        #
-        # combined = torch.cat(aggregated, dim=-1)  # Stack [⊕_1, ..., ⊕_n]
-        # fused = self.combine(combined)            # ⓧ(⊕_1, ..., ⊕_n)
-        # return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
+        # Use the parent HigherOrderMessagePassing forward method
+        out = super().forward(x, edge_index_list, edge_attr_list)
+
+        # Add bias if present (learnable per-node bias)
+        if self.bias is not None:
+            out = out + self.bias
+
+        return out
 
 
-        if edge_attr_list is None:
-            edge_attr_list = [None] * len(edge_index_list)
-        if len(edge_index_list) != len(self.maps):
-            raise ValueError("num_neighborhoods mismatch with edge_index_list length.")
 
-        aggregated = []
-        for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
-            if edge_index.dtype != torch.long:
-                raise TypeError("edge_index must be torch.long.")
-            if edge_index.size(0) != 2:
-                raise ValueError("edge_index must be shape [2, num_edges].")
-
-            row, col = edge_index                              # edge y → x: src = y, tgt = x
-            _check_index(row, x.size(0), "row (src)")
-            _check_index(col, x.size(0), "col (tgt)")
-            _same_device(x, edge_index, edge_attr if edge_attr is not None else x)
-
-            h_src, h_tgt = x[row], x[col]
-            messages = self.maps[i](h_src, h_tgt, edge_attr)
-            agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
-            aggregated.append(agg)
-
-        combined = torch.cat(aggregated, dim=-1)    # Stack [⊕_1, ..., ⊕_n]
-        fused = self.combine(combined)              # ⓧ(⊕_1, ..., ⊕_n)
-        return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
+# class HigherOrderConv(nn.Module):
+#     """
+#     Implements higher-order copresheaf-based message passing (Proposition 3).
+#
+#     For each vertex x, messages are computed for each neighborhood k = 1..n
+#     (e.g., adjacency, incidence, co-boundary). Then, these are aggregated using:
+#
+#         ⓧ({⊕_y α_k(h_x, ρ_k(h_y))}) for k = 1 to n
+#
+#     Followed by an update function β that combines the result of ⓧ with h_x^l.
+#
+#     Args:
+#         in_dim (int): Input feature dimension F(x)
+#         out_dim (int): Output feature dimension F'(x)
+#         edge_attr_dim (int): Dim of edge attributes per neighborhood
+#         num_neighborhoods (int): Number of neighborhood types
+#     """
+#     def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, Edge_Map=Conv):
+#         super().__init__()
+#         self.in_dim = in_dim
+#         self.out_dim = out_dim
+#         self.num_neighborhoods = num_neighborhoods
+#
+#         # One copresheaf map per neighborhood (e.g., adjacency, higher-order face maps)
+#         self.maps = nn.ModuleList([
+#             Edge_Map(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
+#         ])
+#
+#         # Combination function ⓧ: merges [⊕_1, ⊕_2, ..., ⊕_n] into single vector
+#         self.combine = nn.Sequential(
+#             nn.Linear(num_neighborhoods * out_dim, out_dim),
+#             nn.ReLU()
+#         )
+#
+#         # Final update function β(h_x, ⓧ(...))
+#         self.Beta = nn.Sequential(
+#             nn.Linear(in_dim + out_dim, out_dim),
+#             nn.ReLU()
+#         )
+#
+#     def forward(self, x, edge_index_list, edge_attr_list=None):
+#         """
+#         Performs higher-order copresheaf message passing for each neighborhood.
+#
+#         Args:
+#             x (Tensor): Node features h_x [num_nodes, in_dim]
+#             edge_index_list (List[Tensor]): List of edge_index tensors for n neighborhoods
+#             edge_attr_list (List[Tensor or None], optional): List of edge attributes per neighborhood
+#
+#         Returns:
+#             Tensor: Updated node features h_x^{l+1} [num_nodes, out_dim]
+#         """
+#         # if edge_attr_list is None:
+#         #     edge_attr_list = [None] * len(edge_index_list)
+#         #
+#         # aggregated = []
+#         # for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
+#         #     row, col = edge_index  # edge y → x: src = y, tgt = x
+#         #     h_src, h_tgt = x[row], x[col]
+#         #     messages = self.maps[i](h_src, h_tgt, edge_attr)
+#         #     agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
+#         #     aggregated.append(agg)
+#         #
+#         # combined = torch.cat(aggregated, dim=-1)  # Stack [⊕_1, ..., ⊕_n]
+#         # fused = self.combine(combined)            # ⓧ(⊕_1, ..., ⊕_n)
+#         # return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
+#
+#
+#         if edge_attr_list is None:
+#             edge_attr_list = [None] * len(edge_index_list)
+#         if len(edge_index_list) != len(self.maps):
+#             raise ValueError("num_neighborhoods mismatch with edge_index_list length.")
+#
+#         aggregated = []
+#         for i, (edge_index, edge_attr) in enumerate(zip(edge_index_list, edge_attr_list)):
+#             if edge_index.dtype != torch.long:
+#                 raise TypeError("edge_index must be torch.long.")
+#             if edge_index.size(0) != 2:
+#                 raise ValueError("edge_index must be shape [2, num_edges].")
+#
+#             row, col = edge_index                              # edge y → x: src = y, tgt = x
+#             _check_index(row, x.size(0), "row (src)")
+#             _check_index(col, x.size(0), "col (tgt)")
+#             _same_device(x, edge_index, edge_attr if edge_attr is not None else x)
+#
+#             h_src, h_tgt = x[row], x[col]
+#             messages = self.maps[i](h_src, h_tgt, edge_attr)
+#             agg = self.maps[i].aggregate_messages(messages, col, x.size(0))
+#             aggregated.append(agg)
+#
+#         combined = torch.cat(aggregated, dim=-1)    # Stack [⊕_1, ..., ⊕_n]
+#         fused = self.combine(combined)              # ⓧ(⊕_1, ..., ⊕_n)
+#         return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
 
 
 
