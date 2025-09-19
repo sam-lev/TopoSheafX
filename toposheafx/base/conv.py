@@ -9,49 +9,28 @@ Implements local copresheaf morphisms and aggregation rules as described in
 Usage:
 -------
 >>> import torch
->>> from models.copresheaf import CopresheafMap, CopresheafHigherOrderMap
+>>> from models.copresheaf import Conv, HigherOrderConv
 >>> x = torch.randn(4, 8)  # 4 nodes, 8-dimensional features
 >>> edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]])
->>> model = CopresheafMap(8, 16)
+>>> model = Conv(8, 16)
 >>> h_src, h_tgt = x[edge_index[0]], x[edge_index[1]]
 >>> messages = model(h_src, h_tgt)
 >>> agg = model.aggregate_messages(messages, edge_index[1], num_nodes=4)
 
 >>> # Higher-order message passing
->>> model_ho = CopresheafHigherOrderMap(8, 16, num_neighborhoods=1)
+>>> model_ho = HigherOrderConv(8, 16, num_neighborhoods=1)
 >>> out = model_ho(x, [edge_index])
 """
 
 import torch
 import torch.nn as nn
 from torch_scatter import scatter
-from utils.guards import _same_device
-from utils.guards import _check_index
-
-def mlp_factory(dim_in: int, dim_out: int, mlp_type='lin_lrelu_lin'):
-    if mlp_type == 'lin':
-        return nn.Linear(dim_in, dim_out)
-
-    elif mlp_type == 'lin_lrelu_lin':
-        return nn.Sequential(
-            nn.Linear(dim_in, dim_in),
-            nn.LeakyReLU(),
-            nn.Linear(dim_in, dim_out)
-        )
-
-    elif mlp_type == 'lin_bn_lrelu_lin':
-        return nn.Sequential(
-            nn.Linear(dim_in, dim_in),
-            nn.BatchNorm1d(dim_in),
-            nn.LeakyReLU(),
-            nn.Linear(dim_in, dim_out)
-        )
-    else:
-        raise ValueError("Unknown gin_mlp_type!")
+from toposheafx.utils.guards import _same_device
+from toposheafx.utils.guards import _check_index
 
 
 
-class CopresheafMap(nn.Module):
+class Conv(nn.Module):
     """
     Implements a copresheaf morphism for message passing on directed complexes.
 
@@ -187,7 +166,7 @@ class CopresheafMap(nn.Module):
         return self.Beta(torch.cat([h_x, aggr_msg], dim=-1))
 
 
-class CopresheafHigherOrderMap(nn.Module):
+class HigherOrderConv(nn.Module):
     """
     Implements higher-order copresheaf-based message passing (Proposition 3).
 
@@ -204,7 +183,7 @@ class CopresheafHigherOrderMap(nn.Module):
         edge_attr_dim (int): Dim of edge attributes per neighborhood
         num_neighborhoods (int): Number of neighborhood types
     """
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, Edge_Map=CopresheafMap):
+    def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, Edge_Map=Conv):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -283,84 +262,3 @@ class CopresheafHigherOrderMap(nn.Module):
 
 
 
-
-class CopresheafMessagePassing(nn.Module):
-    """
-    Message passing layer where each edge has its own local transformation (copresheaf morphism).
-
-    Args:
-        in_channels (int): Dim of input node features.
-        out_channels (int): Dim of output node features.
-        edge_index (LongTensor): [2, num_edges] tensor of edge indices.
-        edge_mlp_factory (Callable): function that returns a new MLP for each edge.
-    """
-    def __init__(self, in_channels, out_channels, edge_index, edge_map_factory):
-        super().__init__()
-        if edge_index.dtype != torch.long or edge_index.size(0) != 2:
-            raise ValueError("edge_index must be [2, num_edges] with dtype torch.long.")
-        self.edge_index = edge_index
-        num_edges = edge_index.size(1)
-
-        # Create a module list of local maps (MLPs), one per edge
-        self.edge_mlps = nn.ModuleList(
-            [edge_map_factory(in_channels, out_channels) for _ in range(num_edges)]
-        )
-
-    def forward(self, x):
-        """
-        Forward pass.
-
-        Args:
-            x (Tensor): Node features, shape [num_nodes, in_channels].
-
-        Returns:
-            Tensor: Updated node features, shape [num_nodes, out_channels].
-        """
-        row, col = self.edge_index
-        _check_index(row, x.size(0), "row (src)")
-        _check_index(col, x.size(0), "col (tgt)")
-        _same_device(x, self.edge_index)
-
-        # Apply per-edge local maps
-        messages = []
-        for k in range(self.edge_index.size(1)):
-            source_node = row[k]
-            mlp = self.edge_mlps[k]
-            if next(mlp.parameters()).device != x.device:
-                mlp.to(x.device)
-            message = mlp(x[source_node].unsqueeze(0)) # shape [1, out_channels]
-            messages.append(message)
-
-        messages = torch.cat(messages, dim=0) # shape [num_edges, out_channels]
-
-        # Aggregate messages at each target node
-        # old
-        # out = scatter_add(messages, col, dim=0, dim_size=x.size(0)) # [num_nodes, out_channels]
-
-        # use of more general scatter to allow for alternate aggregation approaches (chagne reduce: reduce='sum', 'mean', 'max')
-        out = scatter(messages, col, dim=0, dim_size=x.size(0), reduce='sum')
-        return out
-
-
-
-
-
-
-
-# Setup
-edge_index = torch.tensor([
-    [0, 1, 2, 3, 1, 2], # source
-    [1, 2, 3, 0, 0, 1] # target
-])
-
-x = torch.randn(4, 8) # 4 nodes, 8-dim features
-
-copresheaf_layer = CopresheafMessagePassing(
-    in_channels=8,
-    out_channels=16,
-    edge_index=edge_index,
-    edge_map_factory=mlp_factory,
-)
-
-out = copresheaf_layer(x)
-print(out.shape) # [4, 16]

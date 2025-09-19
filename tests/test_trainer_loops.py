@@ -2,7 +2,7 @@
 import types
 import torch
 from train.trainer import train, evaluate
-from models.cmpnn_base import CMPNN
+from toposheafx.nn.model import CMPNN
 
 class TinyDataset(torch.utils.data.IterableDataset):
     """

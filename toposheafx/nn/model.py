@@ -16,16 +16,103 @@ Usage:
 
 >>> chom = CHOMPNN(in_dim=8, hidden_dim=16, out_dim=3)
 >>> out2 = chom(x, [edge_index], batch)
+
+
+Copresheaf-based message passing components for graph and cell complex neural networks.
+Implements local copresheaf morphisms and aggregation rules as described in
+"Copresheaf Topological Neural Networks" Hajij et. al.
+
+Usage:
+-------
+>>> import torch
+>>> from models.copresheaf import Conv, HigherOrderConv
+>>> x = torch.randn(4, 8)  # 4 nodes, 8-dimensional features
+>>> edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]])
+>>> model = Conv(8, 16)
+>>> h_src, h_tgt = x[edge_index[0]], x[edge_index[1]]
+>>> messages = model(h_src, h_tgt)
+>>> agg = model.aggregate_messages(messages, edge_index[1], num_nodes=4)
+
+>>> # Higher-order message passing
+>>> model_ho = HigherOrderConv(8, 16, num_neighborhoods=1)
+>>> out = model_ho(x, [edge_index])
+
 """
 
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import scatter
 from torch_geometric.utils import softmax as segment_softmax
-from models.copresheaf import CopresheafMap
-from models.copresheaf import CopresheafHigherOrderMap
+from models.copresheaf import Conv
+from models.copresheaf import HigherOrderConv
 
-class CMPNNLayer(MessagePassing):
+import torch
+from toposheafx.utils.guards import _same_device
+from toposheafx.utils.guards import _check_index
+
+
+
+class copresheaf_layer(nn.Module):
+    """
+    Message passing layer where each edge has its own local transformation (copresheaf morphism).
+
+    Args:
+        in_channels (int): Dim of input node features.
+        out_channels (int): Dim of output node features.
+        edge_index (LongTensor): [2, num_edges] tensor of edge indices.
+        edge_mlp_factory (Callable): function that returns a new MLP for each edge.
+    """
+    def __init__(self, in_channels, out_channels, edge_index, edge_map_factory):
+        super().__init__()
+        if edge_index.dtype != torch.long or edge_index.size(0) != 2:
+            raise ValueError("edge_index must be [2, num_edges] with dtype torch.long.")
+        self.edge_index = edge_index
+        num_edges = edge_index.size(1)
+
+        # Create a module list of local maps (MLPs), one per edge
+        self.edge_mlps = nn.ModuleList(
+            [edge_map_factory(in_channels, out_channels) for _ in range(num_edges)]
+        )
+
+    def forward(self, x):
+        """
+        Forward pass.
+
+        Args:
+            x (Tensor): Node features, shape [num_nodes, in_channels].
+
+        Returns:
+            Tensor: Updated node features, shape [num_nodes, out_channels].
+        """
+        row, col = self.edge_index
+        _check_index(row, x.size(0), "row (src)")
+        _check_index(col, x.size(0), "col (tgt)")
+        _same_device(x, self.edge_index)
+
+        # Apply per-edge local maps
+        messages = []
+        for k in range(self.edge_index.size(1)):
+            source_node = row[k]
+            mlp = self.edge_mlps[k]
+            if next(mlp.parameters()).device != x.device:
+                mlp.to(x.device)
+            message = mlp(x[source_node].unsqueeze(0)) # shape [1, out_channels]
+            messages.append(message)
+
+        messages = torch.cat(messages, dim=0) # shape [num_edges, out_channels]
+
+        # Aggregate messages at each target node
+        # old
+        # out = scatter_add(messages, col, dim=0, dim_size=x.size(0)) # [num_nodes, out_channels]
+
+        # use of more general scatter to allow for alternate aggregation approaches (chagne reduce: reduce='sum', 'mean', 'max')
+        out = scatter(messages, col, dim=0, dim_size=x.size(0), reduce='sum')
+        return out
+
+
+
+
+class cmpnn_layer(MessagePassing):
     """
     CMPNNLayer: Copresheaf Message Passing Layer (Proposition 1).
 
@@ -56,7 +143,7 @@ class CMPNNLayer(MessagePassing):
 
         # Multiple copresheaf maps for different neighborhoods (e.g., adjacency, incidence)
         self.copresheaf_maps = nn.ModuleList([
-            CopresheafMap(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
+            Conv(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
         ])
 
     def forward(self, x, edge_index_list, edge_attr_list=None):
@@ -92,7 +179,7 @@ class CMPNNLayer(MessagePassing):
         return sum(all_updates) / len(all_updates)  # average across neighborhoods
 
 
-class CHOMPNNLayer(MessagePassing):
+class chompnn_layer(MessagePassing):
     """
     CHOMPNNLayer: Copresheaf-based Higher-Order Message Passing Layer (Proposition 3).
 
@@ -110,7 +197,7 @@ class CHOMPNNLayer(MessagePassing):
     """
     def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1):
         super().__init__(aggr=None)  # custom aggregation logic handled by ⓧ and β
-        self.model = CopresheafHigherOrderMap(
+        self.model = HigherOrderConv(
             in_dim=in_dim,
             out_dim=out_dim,
             edge_attr_dim=edge_attr_dim,
@@ -156,7 +243,7 @@ class CMPNN(nn.Module):
         super().__init__()
         self.encoder = nn.Linear(in_dim, hidden_dim)
         self.layers = nn.ModuleList([
-            CMPNNLayer(hidden_dim, hidden_dim, edge_attr_dim=edge_attr_dim, num_neighborhoods=num_neighborhoods)
+            cmpnn_layer(hidden_dim, hidden_dim, edge_attr_dim=edge_attr_dim, num_neighborhoods=num_neighborhoods)
             for _ in range(num_layers)
         ])
         self.readout = nn.Linear(hidden_dim, out_dim)
@@ -201,7 +288,7 @@ class CHOMPNN(nn.Module):
         super().__init__()
         self.encoder = nn.Linear(in_dim, hidden_dim)
         self.layers = nn.ModuleList([
-            CHOMPNNLayer(hidden_dim, hidden_dim, edge_attr_dim, num_neighborhoods)
+            chompnn_layer(hidden_dim, hidden_dim, edge_attr_dim, num_neighborhoods)
             for _ in range(num_layers)
         ])
         self.readout = nn.Linear(hidden_dim, out_dim)
@@ -227,7 +314,7 @@ class CHOMPNN(nn.Module):
 
 
 
-class SheafTransformerLayer(MessagePassing):
+class transformer_layer(MessagePassing):
     """
     SheafTransformerLayer: Attention-based Copresheaf Transformer Layer
 
@@ -248,7 +335,7 @@ class SheafTransformerLayer(MessagePassing):
         self.out_dim = out_dim
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-        self.map = CopresheafMap(in_dim, out_dim, edge_attr_dim=edge_attr_dim)
+        self.map = Conv(in_dim, out_dim, edge_attr_dim=edge_attr_dim)
 
         self.key = nn.Linear(in_dim, out_dim * heads)
         self.query = nn.Linear(in_dim, out_dim * heads)
@@ -298,3 +385,25 @@ class SheafTransformerLayer(MessagePassing):
 
         # Final projection mixes heads -> [N, out_dim]
         return self.out_proj(out)
+
+
+
+
+
+# Setup
+edge_index = torch.tensor([
+    [0, 1, 2, 3, 1, 2], # source
+    [1, 2, 3, 0, 0, 1] # target
+])
+
+x = torch.randn(4, 8) # 4 nodes, 8-dim features
+
+copresheaf_l = copresheaf_layer(
+    in_channels=8,
+    out_channels=16,
+    edge_index=edge_index,
+    edge_map_factory=mlp_factory,
+)
+
+out = copresheaf_l(x)
+print(out.shape) # [4, 16]
