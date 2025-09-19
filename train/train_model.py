@@ -6,8 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import torch
 import argparse
 from torch_geometric.loader import DataLoader
-# from models.cmpnn_base import CMPNN
-from models.cmpnn_base import CMPNN
+from toposheafx.nn.model import CMPNN
 from train.trainer import train, evaluate
 from data.graph_datasets import load_complex_dataset  # You implement this
 
