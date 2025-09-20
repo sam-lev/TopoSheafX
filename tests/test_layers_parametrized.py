@@ -1,7 +1,8 @@
 # tests/test_layers_parametrized.py
-import torch
 import pytest
-from toposheafx.nn.layer import cmpnn_layer, chompnn_layer
+import torch
+
+from toposheafx.nn.layer import chompnn_layer, cmpnn_layer
 
 
 @pytest.fixture

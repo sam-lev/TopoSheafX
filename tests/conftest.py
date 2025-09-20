@@ -1,10 +1,11 @@
 # tests/conftest.py
 import sys
 from pathlib import Path
-import torch
-import pytest
+from typing import List, Tuple
+
 import numpy as np
-from typing import Tuple, List
+import pytest
+import torch
 
 # Make repo root importable if needed
 root = Path(__file__).resolve().parents[1]
@@ -46,7 +47,7 @@ def set_random_seed():
 
 
 @pytest.fixture
-def simple_graph() -> Tuple[torch.Tensor, torch.Tensor]:
+def simple_graph() -> tuple[torch.Tensor, torch.Tensor]:
     """Create a simple test graph."""
     # Triangle graph
     edge_index = torch.tensor([

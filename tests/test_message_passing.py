@@ -3,14 +3,16 @@ Comprehensive test suite for toposheafx/base/message_passing.py
 Tests MessagePassing and HigherOrderMessagePassing classes with various aggregation strategies.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import Mock, patch, MagicMock
+
+from toposheafx.base.aggregation import Aggregation, AggregationFactory
 
 # Import the classes to test
-from toposheafx.base.message_passing import MessagePassing, HigherOrderMessagePassing
-from toposheafx.base.aggregation import Aggregation, AggregationFactory
+from toposheafx.base.message_passing import HigherOrderMessagePassing, MessagePassing
 
 
 class TestMessagePassing:

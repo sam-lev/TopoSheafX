@@ -1,14 +1,18 @@
 # train_model.py
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import torch
 import argparse
+
+import torch
 from torch_geometric.loader import DataLoader
-from toposheafx.nn.model import CMPNN
-from train.trainer import train, evaluate
+
 from data.graph_datasets import load_complex_dataset  # You implement this
+from toposheafx.nn.model import CMPNN
+from train.trainer import evaluate, train
+
 
 def main(args):
     # Load higher-order combinatorial complex dataset

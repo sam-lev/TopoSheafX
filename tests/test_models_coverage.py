@@ -1,7 +1,9 @@
 # tests/test_models_coverage.py
-import torch
 import pytest
-from toposheafx.nn.model import CMPNN, CHOMPNN
+import torch
+
+from toposheafx.nn.model import CHOMPNN, CMPNN
+
 
 def _edge_lists_pair():
     e1 = torch.tensor([[0,1,2,3,4],[1,2,3,4,5]])

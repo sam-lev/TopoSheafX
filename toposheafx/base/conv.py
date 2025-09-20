@@ -23,9 +23,8 @@ Usage:
 
 import torch
 import torch.nn as nn
-from toposheafx.base.message_passing import MessagePassing, HigherOrderMessagePassing
-from toposheafx.utils.guards import _same_device
-from toposheafx.utils.guards import _check_index
+
+from toposheafx.base.message_passing import HigherOrderMessagePassing, MessagePassing
 
 
 class Conv(MessagePassing):

@@ -1,6 +1,6 @@
 # tests/test_transformer_layer_ext.py
-import torch
 import pytest
+import torch
 
 try:
     from toposheafx.nn.layer import copresheaf_transformer_layer

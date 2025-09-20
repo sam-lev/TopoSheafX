@@ -8,7 +8,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from toposheafx.nn.model import CMPNN, CHOMPNN
+from toposheafx.nn.model import CHOMPNN, CMPNN
 
 
 class TestCMPNN:

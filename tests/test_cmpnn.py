@@ -4,11 +4,11 @@ Test file for CMPNN and CHOMPNN models.
 Tests basic forward pass and gradient flow.
 """
 
-import torch
 import pytest
+import torch
 
 # Import from the new structure
-from toposheafx.nn.model import CMPNN, CHOMPNN
+from toposheafx.nn.model import CHOMPNN, CMPNN
 
 torch.manual_seed(0)
 

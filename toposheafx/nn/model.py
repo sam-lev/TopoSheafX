@@ -9,7 +9,8 @@ by Hajij et al., specifically for graph classification and regression tasks.
 import torch
 from torch import nn
 from torch_geometric.utils import scatter
-from toposheafx.nn.layer import cmpnn_layer, chompnn_layer
+
+from toposheafx.nn.layer import chompnn_layer, cmpnn_layer
 
 
 class CMPNN(nn.Module):

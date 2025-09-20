@@ -1,8 +1,11 @@
 # tests/test_trainer_loops.py
 import types
+
 import torch
-from train.trainer import train, evaluate
+
 from toposheafx.nn.model import CMPNN
+from train.trainer import evaluate, train
+
 
 class TinyDataset(torch.utils.data.IterableDataset):
     """

@@ -1,4 +1,6 @@
 import torch.nn as nn
+
+
 def mlp_factory(dim_in: int, dim_out: int, mlp_type='lin_lrelu_lin'):
     if mlp_type == 'lin':
         return nn.Linear(dim_in, dim_out)

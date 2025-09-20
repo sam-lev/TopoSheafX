@@ -48,9 +48,11 @@ by Hajij et al., specifically implementing Propositions 1 and 3.
 
 import torch
 from torch import nn
-from torch_geometric.utils import scatter, softmax as segment_softmax
+from torch_geometric.utils import scatter
+from torch_geometric.utils import softmax as segment_softmax
+
 from toposheafx.base.conv import Conv, HigherOrderConv
-from toposheafx.utils.guards import _same_device, _check_index
+from toposheafx.utils.guards import _check_index, _same_device
 
 
 class copresheaf_layer(nn.Module):

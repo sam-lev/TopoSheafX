@@ -1,8 +1,10 @@
-import torch
 import types
 
-from train.trainer import train, evaluate
+import torch
+
 from toposheafx.nn.model import CMPNN
+from train.trainer import evaluate, train
+
 
 class _TinyDataset(torch.utils.data.Dataset):
     """

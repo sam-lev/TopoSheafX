@@ -1,6 +1,7 @@
 # tests/test_copresheaf_ext.py
-import torch
 import pytest
+import torch
+
 from toposheafx.base.conv import Conv, HigherOrderConv
 
 

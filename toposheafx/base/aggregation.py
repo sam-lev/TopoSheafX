@@ -1,11 +1,12 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from torch_scatter import scatter
-from typing import Optional
-from torch import Tensor
 import torch.nn.functional as F
+from torch import Tensor
+from torch_scatter import scatter
 
-from toposheafx.utils.guards import _same_device, _check_index
+from toposheafx.utils.guards import _check_index, _same_device
 
 
 class Aggregation(nn.Module):

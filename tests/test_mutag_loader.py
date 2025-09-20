@@ -2,6 +2,7 @@
 
 from data.graph_datasets import load_complex_dataset
 
+
 def test_mutag_dataset():
     dataset = load_complex_dataset("mutag")
     print(f"Loaded MUTAG dataset with {len(dataset)} graphs.")

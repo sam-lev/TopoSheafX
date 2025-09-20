@@ -19,14 +19,15 @@ Proposition 3 (Multiple Neighborhoods):
 The Aggregation class handles the ⊕ operators with various permutation-invariant strategies.
 """
 
+from typing import Any, Callable, Dict, List, Optional, Union
+
 import torch
 import torch.nn as nn
-from torch_geometric.nn import MessagePassing as PyGMessagePassing
-from typing import Optional, Callable, Union, List, Dict, Any
 from torch import Tensor
+from torch_geometric.nn import MessagePassing as PyGMessagePassing
 
-from toposheafx.utils.guards import _same_device, _check_index
 from toposheafx.base.aggregation import Aggregation, AggregationFactory
+from toposheafx.utils.guards import _check_index, _same_device
 
 
 class MessagePassing(PyGMessagePassing):

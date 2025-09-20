@@ -1,15 +1,18 @@
 # trainer.py
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import torch
-from torch import nn
-import torch.nn.functional as F
 from typing import Any
 
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+
 def _move_to_device(obj: Any, device: torch.device):
-    if hasattr(obj, "to") and callable(getattr(obj, "to")):
+    if hasattr(obj, "to") and callable(obj.to):
         try:
             return obj.to(device)
         except Exception:
