@@ -6,8 +6,6 @@ Tests Aggregation class and AggregationFactory with all aggregation methods.
 
 import pytest
 import torch
-import torch.nn as nn
-from unittest.mock import Mock, patch
 
 from toposheafx.base.aggregation import Aggregation, AggregationFactory
 

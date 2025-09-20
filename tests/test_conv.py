@@ -7,10 +7,8 @@ Tests Conv and HigherOrderConv classes.
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import Mock, patch
 
 from toposheafx.base.conv import Conv, HigherOrderConv
-from toposheafx.base.aggregation import Aggregation
 
 
 class TestConv:
@@ -107,9 +105,7 @@ class TestConv:
             out_dim=setup_conv['out_dim']
         )
 
-        # Store initial parameters
-        initial_bias = conv.bias.clone() if conv.bias is not None else None
-
+        
         # Reset parameters
         conv.reset_parameters()
 

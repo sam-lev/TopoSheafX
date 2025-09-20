@@ -7,7 +7,6 @@ Tests CMPNN and CHOMPNN model classes.
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import Mock, patch
 
 from toposheafx.nn.model import CMPNN, CHOMPNN
 
