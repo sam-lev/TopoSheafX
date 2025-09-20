@@ -291,21 +291,21 @@ class HigherOrderConv(HigherOrderMessagePassing):
         out_dim (int): Output feature dimension F'(x)
         edge_attr_dim (int): Dim of edge attributes per neighborhood
         num_neighborhoods (int): Number of neighborhood types
-        Edge_Map (class): Convolution class to use (default: Conv)
+        edge_map (class): Convolution class to use (default: Conv)
         combine_method (str): How to combine neighborhoods ('concat', 'sum', 'mean')
         aggr (str): Aggregation method for each neighborhood
         bias (bool): Whether to add learnable bias
     """
 
     def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1,
-                 Edge_Map=None, combine_method='concat', aggr='sum', bias=True, **kwargs):
+                 edge_map=None, combine_method='concat', aggr='sum', bias=True, **kwargs):
 
-        if Edge_Map is None:
-            Edge_Map = Conv
+        if edge_map is None:
+            edge_map = Conv
 
         # Create factory function for the neighborhood layers
         def neighborhood_factory():
-            return Edge_Map(in_dim, out_dim, edge_attr_dim, aggr=aggr, bias=False)
+            return edge_map(in_dim, out_dim, edge_attr_dim, aggr=aggr, bias=False)
 
         super().__init__(
             in_dim=in_dim,
@@ -429,7 +429,7 @@ class HigherOrderConv(HigherOrderMessagePassing):
 #         edge_attr_dim (int): Dim of edge attributes per neighborhood
 #         num_neighborhoods (int): Number of neighborhood types
 #     """
-#     def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, Edge_Map=Conv):
+#     def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1, edge_map=Conv):
 #         super().__init__()
 #         self.in_dim = in_dim
 #         self.out_dim = out_dim
@@ -437,7 +437,7 @@ class HigherOrderConv(HigherOrderMessagePassing):
 #
 #         # One copresheaf map per neighborhood (e.g., adjacency, higher-order face maps)
 #         self.maps = nn.ModuleList([
-#             Edge_Map(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
+#             edge_map(in_dim, out_dim, edge_attr_dim) for _ in range(num_neighborhoods)
 #         ])
 #
 #         # Combination function ⓧ: merges [⊕_1, ⊕_2, ..., ⊕_n] into single vector

@@ -19,7 +19,7 @@ Proposition 3 (Multiple Neighborhoods):
 The Aggregation class handles the ⊕ operators with various permutation-invariant strategies.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -520,7 +520,7 @@ class MessagePassing(PyGMessagePassing):
         """
         self._init_aggregation(new_aggregation, config)
 
-    def get_aggregation_info(self) -> Dict[str, Any]:
+    def get_aggregation_info(self) -> dict[str, Any]:
         """
         Get information about current aggregation configuration.
 
@@ -619,7 +619,7 @@ class HigherOrderMessagePassing(nn.Module):
             out_dim: int,
             edge_attr_dim: int = 0,
             num_neighborhoods: int = 1,
-            aggr: Union[str, Aggregation, List[Union[str, Aggregation]]] = 'sum',
+            aggr: Union[str, Aggregation, list[Union[str, Aggregation]]] = 'sum',
             combine_method: str = 'concat',
             aggregation_config: Optional[dict] = None,
             **kwargs
@@ -645,7 +645,7 @@ class HigherOrderMessagePassing(nn.Module):
 
     def _init_neighborhood_layers(
             self,
-            aggr: Union[str, Aggregation, List],
+            aggr: Union[str, Aggregation, list],
             edge_attr_dim: int,
             config: Optional[dict]
     ):
@@ -779,8 +779,8 @@ class HigherOrderMessagePassing(nn.Module):
     def forward(
             self,
             x: Tensor,
-            edge_index_list: List[Tensor],
-            edge_attr_list: Optional[List[Optional[Tensor]]] = None
+            edge_index_list: list[Tensor],
+            edge_attr_list: Optional[list[Optional[Tensor]]] = None
     ) -> Tensor:
         """
         Forward pass implementing higher-order copresheaf message passing (Proposition 3).
@@ -873,7 +873,7 @@ class HigherOrderMessagePassing(nn.Module):
 
         return updated_features
 
-    def _combine_neighborhoods(self, neighborhood_outputs: List[Tensor]) -> Tensor:
+    def _combine_neighborhoods(self, neighborhood_outputs: list[Tensor]) -> Tensor:
         """
         Apply inter-neighborhood combination ⋀ from Proposition 3.
 
@@ -966,7 +966,7 @@ class HigherOrderMessagePassing(nn.Module):
         # Update the specific neighborhood's aggregation
         self.neighborhood_layers[neighborhood_idx].set_aggregation(new_aggregation, config)
 
-    def get_aggregation_summary(self) -> Dict[str, Any]:
+    def get_aggregation_summary(self) -> dict[str, Any]:
         """
         Get comprehensive summary of aggregation configuration across all neighborhoods.
 
@@ -1013,7 +1013,7 @@ class HigherOrderMessagePassing(nn.Module):
 
         return summary
 
-    def get_neighborhood_types_info(self) -> Dict[str, str]:
+    def get_neighborhood_types_info(self) -> dict[str, str]:
         """
         Get information about typical neighborhood interpretations.
 

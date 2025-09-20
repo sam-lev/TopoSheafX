@@ -390,7 +390,7 @@ class Aggregation(nn.Module):
         """
         aggregated_parts = []
 
-        for method_name, aggregator in self.sub_aggregators.items():
+        for _method_name, aggregator in self.sub_aggregators.items():
             part = aggregator(messages, index, dim_size, **kwargs)
             aggregated_parts.append(part)
 

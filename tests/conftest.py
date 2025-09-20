@@ -1,7 +1,7 @@
 # tests/conftest.py
 import sys
 from pathlib import Path
-from typing import List, Tuple
+# typing imports removed - using builtins
 
 import numpy as np
 import pytest

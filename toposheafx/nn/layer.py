@@ -55,7 +55,7 @@ from toposheafx.base.conv import Conv, HigherOrderConv
 from toposheafx.utils.guards import _check_index, _same_device
 
 
-class copresheaf_layer(nn.Module):
+class CopresheafLayer(nn.Module):
     """
     Edge-specific Copresheaf Layer (Section 3.2 of the paper).
 
@@ -123,7 +123,7 @@ class copresheaf_layer(nn.Module):
         return out
 
 
-class cmpnn_layer(nn.Module):
+class CMPNNLayer(nn.Module):
     """
     CMPNN Layer: Implements Proposition 1 from the copresheaf paper.
 
@@ -188,7 +188,7 @@ class cmpnn_layer(nn.Module):
         return sum(all_updates) / len(all_updates)
 
 
-class chompnn_layer(nn.Module):
+class CHOMPNNLayer(nn.Module):
     """
     CHOMPNN Layer: Implements Proposition 3 from the copresheaf paper.
 
@@ -237,7 +237,7 @@ class chompnn_layer(nn.Module):
         return self.model(x, edge_index_list, edge_attr_list)
 
 
-class copresheaf_transformer_layer(nn.Module):
+class CopresheafTransformerLayer(nn.Module):
     """
     Attention-based Copresheaf Transformer Layer (Algorithm 1, Appendix E).
 
@@ -292,8 +292,8 @@ class copresheaf_transformer_layer(nn.Module):
         h_src, h_tgt = x[row], x[col]
 
         # Compute multi-head attention scores
-        K = self.key(h_src).view(-1, self.heads, self.out_dim)
-        Q = self.query(h_tgt).view(-1, self.heads, self.out_dim)
+        k = self.key(h_src).view(-1, self.heads, self.out_dim)
+        q = self.query(h_tgt).view(-1, self.heads, self.out_dim)
 
         # Scaled dot-product attention (Equation 7 in Appendix E)
         attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)
@@ -310,7 +310,7 @@ class copresheaf_transformer_layer(nn.Module):
         messages_base = self.copresheaf_map(x, edge_index, edge_attr)
 
         # Transform source features through value projection
-        V = self.value(h_src).view(-1, self.heads, self.out_dim)
+        v = self.value(h_src).view(-1, self.heads, self.out_dim)
 
         # Combine copresheaf messages with attention-weighted values
         # This creates a richer message that incorporates both structural
@@ -347,7 +347,7 @@ class copresheaf_transformer_layer(nn.Module):
 # from toposheafx.utils.guards import _check_index
 # from toposheafx.utils.mlp    import mlp_factory
 
-# class copresheaf_layer(nn.Module):
+# class CopresheafLayer(nn.Module):
 #     """
 #     Message passing layer where each edge has its own local transformation (copresheaf morphism).
 #
@@ -424,7 +424,7 @@ class copresheaf_transformer_layer(nn.Module):
 # print(out.shape) # [4, 16]
 #
 #
-# class cmpnn_layer(MessagePassing):
+# class CMPNNLayer(MessagePassing):
 #     """
 #     CMPNNLayer: Copresheaf Message Passing Layer (Proposition 1).
 #
@@ -491,7 +491,7 @@ class copresheaf_transformer_layer(nn.Module):
 #         return sum(all_updates) / len(all_updates)  # average across neighborhoods
 #
 #
-# class chompnn_layer(cmpnn_layer):
+# class CHOMPNNLayer(cmpnn_layer):
 #     """
 #     CHOMPNNLayer: Copresheaf-based Higher-Order Message Passing Layer (Proposition 3).
 #
@@ -531,7 +531,7 @@ class copresheaf_transformer_layer(nn.Module):
 #         return self.model(x, edge_index_list, edge_attr_list)
 #
 #
-# class copresheaf_transformer_layer(cmpnn_layer):
+# class CopresheafTransformerLayer(cmpnn_layer):
 #     """
 #     SheafTransformerLayer: Attention-based Copresheaf Transformer Layer
 #
@@ -574,8 +574,8 @@ class copresheaf_transformer_layer(nn.Module):
 #         h_src, h_tgt = x[row], x[col]  # [E, in_dim] each
 #
 #         # Linear projections per head
-#         K = self.key(h_src).view(-1, self.heads, self.out_dim)  # [E, H, d]
-#         Q = self.query(h_tgt).view(-1, self.heads, self.out_dim)  # [E, H, d]
+#         k = self.key(h_src).view(-1, self.heads, self.out_dim)  # [E, H, d]
+#         q = self.query(h_tgt).view(-1, self.heads, self.out_dim)  # [E, H, d]
 #
 #         # Scaled dot-product attention logits per edge & head
 #         attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)  # [E, H]
