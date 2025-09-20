@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "toposheafx"
 version = "0.1.0"
 description = "Copresheaf Topological Neural Networks (CMPNN/CHOMPNN) - message passing on combinatorial complexes"
-authors = [{name = "TopoSheafX Team"}]
+authors = [{name = "toposheafx team"}]
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
@@ -119,7 +119,8 @@ ignore = [
     "N999",  # invalid module name
     "B007",  # unused loop variable
 ]
-"__init__.py" = ["F401", "E402"]  # unused imports and import order
+"__init__.py" = ["F401", "E402", "N999"]  # unused imports, import order, module name
+"*/__init__.py" = ["F401", "E402", "N999"]  # unused imports, import order, module name
 "tests/__init__.py" = ["N999", "W292"]  # module name and newline
 "*/migrations/*" = ["E501"]  # line length in migrations
 "docs/*" = ["E402"]  # import order in docs
