@@ -68,7 +68,6 @@ jobs:
         run: |
           pytest tests/ \
             -v \
-            -m integration \
             --timeout=600
 
       - name: Upload coverage reports
