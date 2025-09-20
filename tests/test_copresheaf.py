@@ -12,8 +12,7 @@ def test_copresheaf_map_forward_and_aggregate_sum_mean_max():
     layer = Conv(in_dim, out_dim)
 
     # Simple 4-node, 5-edge toy graph
-    edge_index = torch.tensor([[0, 1, 2, 2, 3],
-                               [1, 2, 3, 1, 0]])
+    edge_index = torch.tensor([[0, 1, 2, 2, 3], [1, 2, 3, 1, 0]])
     x = torch.randn(4, in_dim)
 
     # Conv processes the full graph
@@ -36,8 +35,7 @@ def test_copresheaf_map_update_shapes_and_grad():
 
     num_nodes = 6
     x = torch.randn(num_nodes, in_dim, requires_grad=True)
-    edge_index = torch.tensor([[0, 1, 2, 3, 4],
-                               [1, 2, 3, 4, 5]])
+    edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]])
 
     # Forward pass through complete layer
     out = layer(x, edge_index)
@@ -66,6 +64,7 @@ def test_higher_order_map_combines_neighborhoods():
     out = ho(x, [e1, e2], edge_attr_list=None)
     assert out.shape == (x.size(0), out_dim)
     assert torch.isfinite(out).all()
+
 
 #
 # import torch

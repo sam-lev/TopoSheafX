@@ -6,14 +6,16 @@ from toposheafx.nn.model import CHOMPNN, CMPNN
 
 
 def _edge_lists_pair():
-    e1 = torch.tensor([[0,1,2,3,4],[1,2,3,4,5]])
-    e2 = torch.tensor([[1,2,3,4,5],[0,0,0,0,0]])
+    e1 = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]])
+    e2 = torch.tensor([[1, 2, 3, 4, 5], [0, 0, 0, 0, 0]])
     return [e1, e2]
+
 
 def _batch(n):
     b = torch.zeros(n, dtype=torch.long)
-    b[n//2:] = 1
+    b[n // 2 :] = 1
     return b
+
 
 @pytest.mark.parametrize("Model", [CMPNN, CHOMPNN])
 def test_models_graph_level_and_backward(Model):
@@ -30,10 +32,11 @@ def test_models_graph_level_and_backward(Model):
     loss.backward()
     assert x.grad is not None
 
+
 def test_model_to_cpu_roundtrip():
     model = CMPNN(in_dim=4, hidden_dim=8, out_dim=2, num_layers=1, num_neighborhoods=1)
     model = model.to("cpu")
     x = torch.randn(4, 4)
-    e = torch.tensor([[0,1,2,3],[1,2,3,0]])
+    e = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]])
     out = model(x=x, edge_index_list=[e], batch=torch.zeros(4, dtype=torch.long))
     assert out.shape == (1, 2)

@@ -8,8 +8,7 @@ from toposheafx.nn.layer import chompnn_layer, cmpnn_layer
 @pytest.fixture
 def toy_edges_1():
     """Simple edge index for testing."""
-    return torch.tensor([[0, 1, 2, 3, 4],
-                         [1, 2, 3, 4, 5]])
+    return torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]])
 
 
 @pytest.fixture
@@ -47,6 +46,7 @@ def test_chompnn_layer_param_grid(num_neighborhoods, toy_edges_1, toy_edges_2):
 
     assert out.shape == (x.size(0), out_dim)
     assert torch.isfinite(out).all()
+
 
 # # tests/test_layers_parametrized.py
 # import torch

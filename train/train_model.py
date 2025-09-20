@@ -2,7 +2,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import argparse
 
@@ -20,7 +20,9 @@ def main(args):
     num_classes = dataset.num_classes
     input_dim = dataset.num_node_features
     sample = dataset[0]
-    edge_attr_dim = sample.edge_attr_list[0].shape[-1] if sample.edge_attr_list[0] is not None else 0
+    edge_attr_dim = (
+        sample.edge_attr_list[0].shape[-1] if sample.edge_attr_list[0] is not None else 0
+    )
     num_neighborhoods = len(sample.edge_index_list)
 
     # Split dataset
@@ -44,7 +46,7 @@ def main(args):
         out_dim=num_classes,
         num_layers=args.num_layers,
         edge_attr_dim=edge_attr_dim,
-        num_neighborhoods=num_neighborhoods
+        num_neighborhoods=num_neighborhoods,
     ).to(args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -60,15 +62,17 @@ def main(args):
     print(f"Test Accuracy: {test_acc:.4f}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, help='Name of dataset to load')
-    parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--hidden_dim', type=int, default=64)
-    parser.add_argument('--num_layers', type=int, default=3)
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
+    parser.add_argument("--dataset", type=str, required=True, help="Name of dataset to load")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--hidden_dim", type=int, default=64)
+    parser.add_argument("--num_layers", type=int, default=3)
+    parser.add_argument(
+        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+    )
     args = parser.parse_args()
 
     main(args)

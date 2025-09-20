@@ -8,8 +8,7 @@ from toposheafx.base.conv import Conv, HigherOrderConv
 @pytest.fixture
 def toy_edges_1():
     """Simple edge index for testing."""
-    return torch.tensor([[0, 1, 2, 3, 4],
-                         [1, 2, 3, 4, 5]])
+    return torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]])
 
 
 @pytest.fixture
@@ -57,6 +56,7 @@ def test_copresheaf_higher_order_two_neighborhoods(toy_edges_2):
     out = ho(x, toy_edges_2, edge_attr_list=None)
     assert out.shape == (x.size(0), out_dim)
     assert torch.isfinite(out).all()
+
 
 # # tests/test_copresheaf_ext.py
 # import torch

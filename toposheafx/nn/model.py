@@ -38,8 +38,9 @@ class CMPNN(nn.Module):
         num_neighborhoods (int): Number of neighborhood types
     """
 
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=2,
-                 edge_attr_dim=0, num_neighborhoods=1):
+    def __init__(
+        self, in_dim, hidden_dim, out_dim, num_layers=2, edge_attr_dim=0, num_neighborhoods=1
+    ):
         super().__init__()
 
         # Initial projection to hidden space (Equation 8 in paper)
@@ -47,15 +48,17 @@ class CMPNN(nn.Module):
 
         # Stack of CMPNN layers implementing Proposition 1
         # Each layer refines node representations using copresheaf structure
-        self.layers = nn.ModuleList([
-            cmpnn_layer(
-                in_dim=hidden_dim,
-                out_dim=hidden_dim,
-                edge_attr_dim=edge_attr_dim,
-                num_neighborhoods=num_neighborhoods
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                cmpnn_layer(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    edge_attr_dim=edge_attr_dim,
+                    num_neighborhoods=num_neighborhoods,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # Graph-level readout (Section 4.2 in paper)
         # Maps aggregated graph features to predictions
@@ -63,7 +66,7 @@ class CMPNN(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
@@ -108,7 +111,7 @@ class CMPNN(nn.Module):
 
         # Graph-level pooling using mean aggregation
         # This implements: g_i = (1/|V_i|) Σ_{v∈V_i} h_v
-        graph_repr = scatter(x, batch, dim=0, reduce='mean')
+        graph_repr = scatter(x, batch, dim=0, reduce="mean")
 
         # Final readout for predictions
         return self.readout(graph_repr)
@@ -140,33 +143,34 @@ class CHOMPNN(nn.Module):
         num_neighborhoods (int): Number of distinct neighborhood types
     """
 
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3,
-                 edge_attr_dim=0, num_neighborhoods=1):
+    def __init__(
+        self, in_dim, hidden_dim, out_dim, num_layers=3, edge_attr_dim=0, num_neighborhoods=1
+    ):
         super().__init__()
 
         # Initial encoding to hidden space
         self.encoder = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
             nn.ReLU(),
-            nn.LayerNorm(hidden_dim)  # Normalization for stability
+            nn.LayerNorm(hidden_dim),  # Normalization for stability
         )
 
         # Stack of higher-order copresheaf layers
         # Each implements full Proposition 3 with multiple neighborhoods
-        self.layers = nn.ModuleList([
-            chompnn_layer(
-                in_dim=hidden_dim,
-                out_dim=hidden_dim,
-                edge_attr_dim=edge_attr_dim,
-                num_neighborhoods=num_neighborhoods
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                chompnn_layer(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    edge_attr_dim=edge_attr_dim,
+                    num_neighborhoods=num_neighborhoods,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # Intermediate layer norms for training stability
-        self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
-        ])
+        self.layer_norms = nn.ModuleList([nn.LayerNorm(hidden_dim) for _ in range(num_layers)])
 
         # Graph-level readout with increased capacity
         self.readout = nn.Sequential(
@@ -176,7 +180,7 @@ class CHOMPNN(nn.Module):
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
@@ -221,7 +225,7 @@ class CHOMPNN(nn.Module):
 
         # Graph pooling - can experiment with different strategies
         # Mean pooling as default (Equation 10 in paper)
-        graph_repr = scatter(x, batch, dim=0, reduce='mean')
+        graph_repr = scatter(x, batch, dim=0, reduce="mean")
 
         # Alternative: Max pooling for dominant features
         # graph_repr = scatter(x, batch, dim=0, reduce='max')
@@ -257,25 +261,25 @@ class CopresheafGNN(nn.Module):
         """
         super().__init__()
 
-        model_type = config.get('model_type', 'cmpnn')
+        model_type = config.get("model_type", "cmpnn")
 
-        if model_type == 'cmpnn':
+        if model_type == "cmpnn":
             self.model = CMPNN(
-                in_dim=config['in_dim'],
-                hidden_dim=config['hidden_dim'],
-                out_dim=config['out_dim'],
-                num_layers=config.get('num_layers', 2),
-                edge_attr_dim=config.get('edge_attr_dim', 0),
-                num_neighborhoods=config.get('num_neighborhoods', 1)
+                in_dim=config["in_dim"],
+                hidden_dim=config["hidden_dim"],
+                out_dim=config["out_dim"],
+                num_layers=config.get("num_layers", 2),
+                edge_attr_dim=config.get("edge_attr_dim", 0),
+                num_neighborhoods=config.get("num_neighborhoods", 1),
             )
-        elif model_type == 'chompnn':
+        elif model_type == "chompnn":
             self.model = CHOMPNN(
-                in_dim=config['in_dim'],
-                hidden_dim=config['hidden_dim'],
-                out_dim=config['out_dim'],
-                num_layers=config.get('num_layers', 3),
-                edge_attr_dim=config.get('edge_attr_dim', 0),
-                num_neighborhoods=config.get('num_neighborhoods', 1)
+                in_dim=config["in_dim"],
+                hidden_dim=config["hidden_dim"],
+                out_dim=config["out_dim"],
+                num_layers=config.get("num_layers", 3),
+                edge_attr_dim=config.get("edge_attr_dim", 0),
+                num_neighborhoods=config.get("num_neighborhoods", 1),
             )
         else:
             raise ValueError(f"Unknown model type: {model_type}")

@@ -116,7 +116,7 @@ class CopresheafLayer(nn.Module):
         messages = torch.cat(messages, dim=0)
 
         # Aggregate using ⊕ operator (Proposition 1)
-        out = scatter(messages, col, dim=0, dim_size=x.size(0), reduce='sum')
+        out = scatter(messages, col, dim=0, dim_size=x.size(0), reduce="sum")
         return out
 
 
@@ -145,10 +145,9 @@ class CMPNNLayer(nn.Module):
 
         # Create copresheaf maps for each neighborhood type
         # Each implements the full message passing from Proposition 1
-        self.copresheaf_maps = nn.ModuleList([
-            Conv(in_dim, out_dim, edge_attr_dim, bias=False)
-            for _ in range(num_neighborhoods)
-        ])
+        self.copresheaf_maps = nn.ModuleList(
+            [Conv(in_dim, out_dim, edge_attr_dim, bias=False) for _ in range(num_neighborhoods)]
+        )
 
     def forward(self, x, edge_index_list, edge_attr_list=None):
         """
@@ -210,8 +209,8 @@ class CHOMPNNLayer(nn.Module):
             out_dim=out_dim,
             edge_attr_dim=edge_attr_dim,
             num_neighborhoods=num_neighborhoods,
-            combine_method='concat',  # ⋀ operator implementation
-            bias=True
+            combine_method="concat",  # ⋀ operator implementation
+            bias=True,
         )
 
     def forward(self, x, edge_index_list, edge_attr_list=None):
@@ -293,7 +292,7 @@ class CopresheafTransformerLayer(nn.Module):
         q = self.query(h_tgt).view(-1, self.heads, self.out_dim)
 
         # Scaled dot-product attention (Equation 7 in Appendix E)
-        attn_logits = (q * k).sum(dim=-1) / (self.out_dim ** 0.5)
+        attn_logits = (q * k).sum(dim=-1) / (self.out_dim**0.5)
 
         # Normalize attention per target node
         logits_flat = attn_logits.reshape(-1)
@@ -316,13 +315,7 @@ class CopresheafTransformerLayer(nn.Module):
 
         # Aggregate messages to target nodes
         messages_flat = messages_attended.reshape(-1, self.heads * self.out_dim)
-        aggregated = scatter(
-            messages_flat,
-            col,
-            dim=0,
-            dim_size=x.size(0),
-            reduce='sum'
-        )
+        aggregated = scatter(messages_flat, col, dim=0, dim_size=x.size(0), reduce="sum")
 
         # Add copresheaf structural bias
         aggregated = aggregated + messages_base.repeat(1, self.heads)

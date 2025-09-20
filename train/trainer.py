@@ -2,7 +2,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from typing import Any
 
@@ -31,8 +31,8 @@ def _move_to_device(obj: Any, device: torch.device):
         return obj
     return obj
 
-def train(model: nn.Module, dataloader, optimizer, device):
 
+def train(model: nn.Module, dataloader, optimizer, device):
     """
     One epoch of supervised training for a cmpnn model.
 
@@ -49,7 +49,7 @@ def train(model: nn.Module, dataloader, optimizer, device):
     total_loss = 0.0
     total_graphs = 0
     for data in dataloader:
-        data = _move_to_device(data, device)   # ← replace: data = data.to(device)
+        data = _move_to_device(data, device)  # ← replace: data = data.to(device)
 
         # Expecting the batch object to contain:
         # - x: node features
@@ -64,7 +64,7 @@ def train(model: nn.Module, dataloader, optimizer, device):
             x=data.x,
             edge_index_list=data.edge_index_list,
             batch=data.batch,
-            edge_attr_list=getattr(data, 'edge_attr_list', None)
+            edge_attr_list=getattr(data, "edge_attr_list", None),
         )
 
         loss = F.cross_entropy(out, data.y)
@@ -102,7 +102,7 @@ def evaluate(model, dataloader, device):
             x=data.x,
             edge_index_list=data.edge_index_list,
             batch=data.batch,
-            edge_attr_list=getattr(data, 'edge_attr_list', None)
+            edge_attr_list=getattr(data, "edge_attr_list", None),
         )
 
         # predictions and accuracy

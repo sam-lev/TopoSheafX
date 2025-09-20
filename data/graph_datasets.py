@@ -9,8 +9,9 @@ class SyntheticComplexDataset(InMemoryDataset):
     A synthetic dataset of combinatorial complexes with multiple neighborhood
     structures and edge attributes, for higher-order message passing models.
     """
+
     def __init__(self, num_samples=200, transform=None):
-        super().__init__('.', transform)
+        super().__init__(".", transform)
         self.data_list = self._generate_synthetic_complexes(num_samples)
         self.data, self.slices = self.collate(self.data_list)
 
@@ -72,12 +73,10 @@ class SyntheticComplexDataset(InMemoryDataset):
                 edge_index_list=edge_index_list,
                 edge_attr_list=edge_attr_list,
                 batch=batch,
-                y=label
+                y=label,
             )
             data_list.append(data)
         return data_list
-
-
 
 
 # python scripts/train_model.py --dataset mutag
@@ -99,9 +98,10 @@ class MUTAGCopresheaf(InMemoryDataset):
         transform (callable, optional): Data transformation.
         pre_transform (callable, optional): Pre-processing transformation.
     """
-    def __init__(self, root='./data', transform=None, pre_transform=None):
+
+    def __init__(self, root="./data", transform=None, pre_transform=None):
         super().__init__(root, transform, pre_transform)
-        self.dataset = TUDataset(root=root, name='MUTAG')
+        self.dataset = TUDataset(root=root, name="MUTAG")
         self.data, self.slices = self.collate([self._convert_graph(g) for g in self.dataset])
 
     def _convert_graph(self, data):
@@ -129,12 +129,9 @@ class MUTAGCopresheaf(InMemoryDataset):
         batch = torch.zeros(x.size(0), dtype=torch.long)  # All nodes belong to one graph
 
         return Data(
-            x=x,
-            edge_index_list=edge_index_list,
-            edge_attr_list=edge_attr_list,
-            batch=batch,
-            y=y
+            x=x, edge_index_list=edge_index_list, edge_attr_list=edge_attr_list, batch=batch, y=y
         )
+
 
 def load_complex_dataset(name):
     """

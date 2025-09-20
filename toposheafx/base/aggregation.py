@@ -61,23 +61,32 @@ class Aggregation(nn.Module):
 
     # Registry of available aggregation methods
     AGGREGATION_METHODS = {
-        'sum', 'mean', 'max', 'min', 'std', 'var',
-        'attention', 'lstm', 'set2set', 'multi'
+        "sum",
+        "mean",
+        "max",
+        "min",
+        "std",
+        "var",
+        "attention",
+        "lstm",
+        "set2set",
+        "multi",
     }
 
     def __init__(
-            self,
-            method: str = 'sum',
-            dim: Optional[int] = None,
-            num_heads: int = 1,
-            dropout: float = 0.0,
-            **kwargs
+        self,
+        method: str = "sum",
+        dim: Optional[int] = None,
+        num_heads: int = 1,
+        dropout: float = 0.0,
+        **kwargs,
     ):
         super().__init__()
 
         if method not in self.AGGREGATION_METHODS:
-            raise ValueError(f"Unknown aggregation method '{method}'. "
-                             f"Available: {self.AGGREGATION_METHODS}")
+            raise ValueError(
+                f"Unknown aggregation method '{method}'. " f"Available: {self.AGGREGATION_METHODS}"
+            )
 
         self.method = method
         self.dim = dim
@@ -91,19 +100,16 @@ class Aggregation(nn.Module):
     def _init_learnable_components(self):
         """Initialize learnable parameters for advanced aggregation methods."""
 
-        if self.method == 'attention':
+        if self.method == "attention":
             if self.dim is None:
                 raise ValueError("dim must be specified for attention aggregation")
 
             # Multi-head attention for message aggregation
             self.attention = nn.MultiheadAttention(
-                embed_dim=self.dim,
-                num_heads=self.num_heads,
-                dropout=self.dropout,
-                batch_first=True
+                embed_dim=self.dim, num_heads=self.num_heads, dropout=self.dropout, batch_first=True
             )
 
-        elif self.method == 'lstm':
+        elif self.method == "lstm":
             if self.dim is None:
                 raise ValueError("dim must be specified for LSTM aggregation")
 
@@ -111,33 +117,31 @@ class Aggregation(nn.Module):
                 input_size=self.dim,
                 hidden_size=self.dim,
                 batch_first=True,
-                dropout=self.dropout if self.dim > 1 else 0
+                dropout=self.dropout if self.dim > 1 else 0,
             )
 
-        elif self.method == 'set2set':
+        elif self.method == "set2set":
             if self.dim is None:
                 raise ValueError("dim must be specified for set2set aggregation")
 
             # Set2Set processing steps (default to 3)
-            self.processing_steps = self.kwargs.get('processing_steps', 3)
+            self.processing_steps = self.kwargs.get("processing_steps", 3)
             self.lstm = nn.LSTM(self.dim, self.dim, batch_first=True)
             self.attention_linear = nn.Linear(2 * self.dim, 1)
 
-        elif self.method == 'multi':
+        elif self.method == "multi":
             # Multi-aggregator: combine multiple methods
-            self.sub_methods = self.kwargs.get('methods', ['sum', 'mean', 'max'])
-            self.sub_aggregators = nn.ModuleDict({
-                method: Aggregation(method, self.dim, self.num_heads, self.dropout)
-                for method in self.sub_methods
-                if method != 'multi'  # Prevent recursion
-            })
+            self.sub_methods = self.kwargs.get("methods", ["sum", "mean", "max"])
+            self.sub_aggregators = nn.ModuleDict(
+                {
+                    method: Aggregation(method, self.dim, self.num_heads, self.dropout)
+                    for method in self.sub_methods
+                    if method != "multi"  # Prevent recursion
+                }
+            )
 
     def forward(
-            self,
-            messages: Tensor,
-            index: Tensor,
-            dim_size: Optional[int] = None,
-            **kwargs
+        self, messages: Tensor, index: Tensor, dim_size: Optional[int] = None, **kwargs
     ) -> Tensor:
         """
         Apply aggregation to messages directed to the same target nodes.
@@ -177,17 +181,17 @@ class Aggregation(nn.Module):
             dim_size = int(index.max()) + 1 if index.numel() > 0 else 0
 
         # Route to appropriate aggregation method
-        if self.method in {'sum', 'mean', 'max', 'min'}:
+        if self.method in {"sum", "mean", "max", "min"}:
             return self._basic_aggregation(messages, index, dim_size)
-        elif self.method in {'std', 'var'}:
+        elif self.method in {"std", "var"}:
             return self._statistical_aggregation(messages, index, dim_size)
-        elif self.method == 'attention':
+        elif self.method == "attention":
             return self._attention_aggregation(messages, index, dim_size, **kwargs)
-        elif self.method == 'lstm':
+        elif self.method == "lstm":
             return self._lstm_aggregation(messages, index, dim_size, **kwargs)
-        elif self.method == 'set2set':
+        elif self.method == "set2set":
             return self._set2set_aggregation(messages, index, dim_size, **kwargs)
-        elif self.method == 'multi':
+        elif self.method == "multi":
             return self._multi_aggregation(messages, index, dim_size, **kwargs)
         else:
             raise NotImplementedError(f"Aggregation method '{self.method}' not implemented")
@@ -213,17 +217,11 @@ class Aggregation(nn.Module):
         MATHEMATICAL OPERATIONS:
         =======================
         - sum: ⊕ = Σ (preserves total magnitude)
-        - mean: ⊕ = (1/|N(x)|) Σ (normalizes by degree)  
+        - mean: ⊕ = (1/|N(x)|) Σ (normalizes by degree)
         - max: ⊕ = max (captures strongest signal)
         - min: ⊕ = min (captures weakest signal)
         """
-        return scatter(
-            messages,
-            index,
-            dim=0,
-            dim_size=dim_size,
-            reduce=self.method
-        )
+        return scatter(messages, index, dim=0, dim_size=dim_size, reduce=self.method)
 
     def _statistical_aggregation(self, messages: Tensor, index: Tensor, dim_size: int) -> Tensor:
         """
@@ -237,22 +235,24 @@ class Aggregation(nn.Module):
         These provide information about the distribution of messages,
         which can be valuable for understanding neighborhood heterogeneity.
         """
-        if self.method == 'std':
+        if self.method == "std":
             # Compute mean first, then standard deviation
-            mean_msgs = scatter(messages, index, dim=0, dim_size=dim_size, reduce='mean')
+            mean_msgs = scatter(messages, index, dim=0, dim_size=dim_size, reduce="mean")
             expanded_mean = mean_msgs[index]
             sq_diff = (messages - expanded_mean) ** 2
-            var_msgs = scatter(sq_diff, index, dim=0, dim_size=dim_size, reduce='mean')
+            var_msgs = scatter(sq_diff, index, dim=0, dim_size=dim_size, reduce="mean")
             return torch.sqrt(var_msgs + 1e-8)  # Add epsilon for numerical stability
 
-        elif self.method == 'var':
+        elif self.method == "var":
             # Compute variance directly
-            mean_msgs = scatter(messages, index, dim=0, dim_size=dim_size, reduce='mean')
+            mean_msgs = scatter(messages, index, dim=0, dim_size=dim_size, reduce="mean")
             expanded_mean = mean_msgs[index]
             sq_diff = (messages - expanded_mean) ** 2
-            return scatter(sq_diff, index, dim=0, dim_size=dim_size, reduce='mean')
+            return scatter(sq_diff, index, dim=0, dim_size=dim_size, reduce="mean")
 
-    def _attention_aggregation(self, messages: Tensor, index: Tensor, dim_size: int, **kwargs) -> Tensor:
+    def _attention_aggregation(
+        self, messages: Tensor, index: Tensor, dim_size: int, **kwargs
+    ) -> Tensor:
         """
         Attention-based aggregation using multi-head attention.
 
@@ -271,7 +271,7 @@ class Aggregation(nn.Module):
         output = torch.zeros(dim_size, self.dim, device=messages.device, dtype=messages.dtype)
 
         for node_idx in range(dim_size):
-            mask = (index == node_idx)
+            mask = index == node_idx
             if mask.sum() == 0:
                 continue  # No messages for this node
 
@@ -279,9 +279,7 @@ class Aggregation(nn.Module):
             node_messages = node_messages.unsqueeze(0)  # [1, num_neighbors, dim]
 
             # Self-attention over neighbors
-            attended, _ = self.attention(
-                node_messages, node_messages, node_messages
-            )
+            attended, _ = self.attention(node_messages, node_messages, node_messages)
 
             # Aggregate attended messages
             output[node_idx] = attended.squeeze(0).mean(dim=0)  # [dim]
@@ -293,7 +291,7 @@ class Aggregation(nn.Module):
         LSTM-based aggregation processing messages sequentially.
 
         NOTE: This method is NOT permutation-invariant and should be used carefully
-        in copresheaf settings. It's included for cases where order matters (e.g., 
+        in copresheaf settings. It's included for cases where order matters (e.g.,
         temporal sequences of topological changes).
 
         MATHEMATICAL OPERATION:
@@ -307,7 +305,7 @@ class Aggregation(nn.Module):
         output = torch.zeros(dim_size, self.dim, device=messages.device, dtype=messages.dtype)
 
         for node_idx in range(dim_size):
-            mask = (index == node_idx)
+            mask = index == node_idx
             if mask.sum() == 0:
                 continue
 
@@ -319,7 +317,9 @@ class Aggregation(nn.Module):
 
         return output
 
-    def _set2set_aggregation(self, messages: Tensor, index: Tensor, dim_size: int, **kwargs) -> Tensor:
+    def _set2set_aggregation(
+        self, messages: Tensor, index: Tensor, dim_size: int, **kwargs
+    ) -> Tensor:
         """
         Set2Set aggregation with attention mechanism.
 
@@ -334,7 +334,7 @@ class Aggregation(nn.Module):
         output = torch.zeros(dim_size, 2 * self.dim, device=messages.device, dtype=messages.dtype)
 
         for node_idx in range(dim_size):
-            mask = (index == node_idx)
+            mask = index == node_idx
             if mask.sum() == 0:
                 continue
 
@@ -375,7 +375,9 @@ class Aggregation(nn.Module):
 
         return torch.cat([h.squeeze(), aggregated.squeeze()], dim=0)  # [2*dim]
 
-    def _multi_aggregation(self, messages: Tensor, index: Tensor, dim_size: int, **kwargs) -> Tensor:
+    def _multi_aggregation(
+        self, messages: Tensor, index: Tensor, dim_size: int, **kwargs
+    ) -> Tensor:
         """
         Multi-aggregation combining multiple aggregation methods.
 
@@ -398,7 +400,7 @@ class Aggregation(nn.Module):
 
     def extra_repr(self) -> str:
         """String representation for debugging."""
-        return f'method={self.method}, dim={self.dim}, num_heads={self.num_heads}'
+        return f"method={self.method}, dim={self.dim}, num_heads={self.num_heads}"
 
 
 class AggregationFactory:
@@ -410,48 +412,33 @@ class AggregationFactory:
     """
 
     @staticmethod
-    def create_basic(method: str = 'sum') -> Aggregation:
+    def create_basic(method: str = "sum") -> Aggregation:
         """Create basic aggregation (sum, mean, max, min)."""
         return Aggregation(method=method)
 
     @staticmethod
-    def create_statistical(method: str = 'std', dim: int = None) -> Aggregation:
+    def create_statistical(method: str = "std", dim: int = None) -> Aggregation:
         """Create statistical aggregation (std, var)."""
         return Aggregation(method=method, dim=dim)
 
     @staticmethod
     def create_attention(dim: int, num_heads: int = 1, dropout: float = 0.0) -> Aggregation:
         """Create attention-based aggregation."""
-        return Aggregation(
-            method='attention',
-            dim=dim,
-            num_heads=num_heads,
-            dropout=dropout
-        )
+        return Aggregation(method="attention", dim=dim, num_heads=num_heads, dropout=dropout)
 
     @staticmethod
     def create_set2set(dim: int, processing_steps: int = 3) -> Aggregation:
         """Create Set2Set aggregation."""
-        return Aggregation(
-            method='set2set',
-            dim=dim,
-            processing_steps=processing_steps
-        )
+        return Aggregation(method="set2set", dim=dim, processing_steps=processing_steps)
 
     @staticmethod
     def create_multi(methods: list, dim: int = None) -> Aggregation:
         """Create multi-aggregation combining several methods."""
-        return Aggregation(
-            method='multi',
-            dim=dim,
-            methods=methods
-        )
+        return Aggregation(method="multi", dim=dim, methods=methods)
 
     @staticmethod
     def create_for_copresheaf(
-            stalk_dim: int,
-            neighborhood_complexity: str = 'simple',
-            dropout: float = 0.0
+        stalk_dim: int, neighborhood_complexity: str = "simple", dropout: float = 0.0
     ) -> Aggregation:
         """
         Create aggregation appropriate for copresheaf message passing.
@@ -464,13 +451,13 @@ class AggregationFactory:
         Returns:
             Configured aggregation instance
         """
-        if neighborhood_complexity == 'simple':
+        if neighborhood_complexity == "simple":
             # Basic neighborhoods, use simple aggregation
-            return AggregationFactory.create_basic('sum')
-        elif neighborhood_complexity == 'complex':
+            return AggregationFactory.create_basic("sum")
+        elif neighborhood_complexity == "complex":
             # Complex neighborhoods, use statistical aggregation
-            return AggregationFactory.create_multi(['sum', 'mean', 'std'], stalk_dim)
-        elif neighborhood_complexity == 'heterogeneous':
+            return AggregationFactory.create_multi(["sum", "mean", "std"], stalk_dim)
+        elif neighborhood_complexity == "heterogeneous":
             # Heterogeneous neighborhoods, use attention
             return AggregationFactory.create_attention(stalk_dim, num_heads=4, dropout=dropout)
         else:

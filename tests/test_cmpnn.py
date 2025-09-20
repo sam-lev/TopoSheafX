@@ -16,17 +16,15 @@ torch.manual_seed(0)
 def _toy_edge_lists(num_nodes=6):
     """Create simple test neighborhoods."""
     # Two simple neighborhoods
-    e1 = torch.tensor([[0, 1, 2, 3, 4],
-                       [1, 2, 3, 4, 5]])  # chain
-    e2 = torch.tensor([[1, 2, 3, 4, 5],
-                       [0, 0, 0, 0, 0]])  # star to node 0
+    e1 = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]])  # chain
+    e2 = torch.tensor([[1, 2, 3, 4, 5], [0, 0, 0, 0, 0]])  # star to node 0
     return [e1, e2]
 
 
 def _toy_batch(n):
     """Group nodes into two graphs: first half -> graph 0, rest -> graph 1."""
     b = torch.zeros(n, dtype=torch.long)
-    b[n // 2:] = 1
+    b[n // 2 :] = 1
     return b
 
 
@@ -41,7 +39,7 @@ def test_models_forward_graph_level_output(Model):
         out_dim=out_dim,
         num_layers=num_layers,
         edge_attr_dim=0,
-        num_neighborhoods=2
+        num_neighborhoods=2,
     )
 
     num_nodes = 6
@@ -64,7 +62,7 @@ def test_models_backward_pass():
         out_dim=out_dim,
         num_layers=2,
         edge_attr_dim=0,
-        num_neighborhoods=2
+        num_neighborhoods=2,
     )
 
     num_nodes = 8
@@ -97,7 +95,7 @@ def test_cmpnn_with_edge_attributes():
         out_dim=out_dim,
         num_layers=2,
         edge_attr_dim=edge_attr_dim,
-        num_neighborhoods=2
+        num_neighborhoods=2,
     )
 
     num_nodes = 6
@@ -105,9 +103,7 @@ def test_cmpnn_with_edge_attributes():
     edge_index_list = _toy_edge_lists(num_nodes)
 
     # Create edge attributes for each neighborhood
-    edge_attr_list = [
-        torch.randn(e.size(1), edge_attr_dim) for e in edge_index_list
-    ]
+    edge_attr_list = [torch.randn(e.size(1), edge_attr_dim) for e in edge_index_list]
 
     batch = _toy_batch(num_nodes)
 
@@ -125,7 +121,7 @@ def test_chompnn_higher_order():
         hidden_dim=hidden,
         out_dim=out_dim,
         num_layers=3,
-        num_neighborhoods=num_neighborhoods
+        num_neighborhoods=num_neighborhoods,
     )
 
     num_nodes = 8
@@ -149,11 +145,7 @@ def test_single_graph_batch():
     in_dim, hidden, out_dim = 8, 16, 3
 
     model = CMPNN(
-        in_dim=in_dim,
-        hidden_dim=hidden,
-        out_dim=out_dim,
-        num_layers=2,
-        num_neighborhoods=2
+        in_dim=in_dim, hidden_dim=hidden, out_dim=out_dim, num_layers=2, num_neighborhoods=2
     )
 
     num_nodes = 10
@@ -172,11 +164,7 @@ def test_empty_neighborhoods():
     in_dim, hidden, out_dim = 8, 16, 3
 
     model = CMPNN(
-        in_dim=in_dim,
-        hidden_dim=hidden,
-        out_dim=out_dim,
-        num_layers=1,
-        num_neighborhoods=2
+        in_dim=in_dim, hidden_dim=hidden, out_dim=out_dim, num_layers=1, num_neighborhoods=2
     )
 
     num_nodes = 4
@@ -199,13 +187,7 @@ def test_empty_neighborhoods():
 @pytest.mark.parametrize("num_layers", [1, 2, 5])
 def test_variable_depth(num_layers):
     """Test models with different depths."""
-    model = CMPNN(
-        in_dim=8,
-        hidden_dim=16,
-        out_dim=3,
-        num_layers=num_layers,
-        num_neighborhoods=1
-    )
+    model = CMPNN(in_dim=8, hidden_dim=16, out_dim=3, num_layers=num_layers, num_neighborhoods=1)
 
     x = torch.randn(10, 8)
     edge_index = torch.tensor([[0, 1, 2], [1, 2, 3]])

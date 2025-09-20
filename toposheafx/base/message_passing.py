@@ -91,16 +91,16 @@ class MessagePassing(PyGMessagePassing):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: int,
-            edge_attr_dim: int = 0,
-            aggr: Union[str, Aggregation] = 'sum',
-            copresheaf_map_factory: Optional[Callable] = None,
-            message_factory: Optional[Callable] = None,
-            update_factory: Optional[Callable] = None,
-            aggregation_config: Optional[dict] = None,
-            **kwargs
+        self,
+        in_dim: int,
+        out_dim: int,
+        edge_attr_dim: int = 0,
+        aggr: Union[str, Aggregation] = "sum",
+        copresheaf_map_factory: Optional[Callable] = None,
+        message_factory: Optional[Callable] = None,
+        update_factory: Optional[Callable] = None,
+        aggregation_config: Optional[dict] = None,
+        **kwargs,
     ):
         super().__init__(aggr=None, **kwargs)  # Disable PyG's built-in aggregation
 
@@ -118,7 +118,7 @@ class MessagePassing(PyGMessagePassing):
             message_factory = self._default_message_factory
         if update_factory is None:
             # For multi-aggregation, we need to adjust the update factory
-            if hasattr(self, 'num_aggregation_methods'):
+            if hasattr(self, "num_aggregation_methods"):
                 update_factory = lambda in_d, out_d: self._multi_update_factory(
                     in_d, out_d, self.num_aggregation_methods
                 )
@@ -136,9 +136,7 @@ class MessagePassing(PyGMessagePassing):
         """
         aggregated_dim = out_dim * num_methods
         return nn.Sequential(
-            nn.Linear(in_dim + aggregated_dim, out_dim),
-            nn.ReLU(),
-            nn.Linear(out_dim, out_dim)
+            nn.Linear(in_dim + aggregated_dim, out_dim), nn.ReLU(), nn.Linear(out_dim, out_dim)
         )
 
     def _init_aggregation(self, aggr: Union[str, Aggregation], config: Optional[dict]):
@@ -182,29 +180,29 @@ class MessagePassing(PyGMessagePassing):
             # Create Aggregation instance from string specification
             config = config or {}
 
-            if aggr == 'copresheaf_adaptive':
+            if aggr == "copresheaf_adaptive":
                 # Automatically choose appropriate aggregation for copresheaf context
-                complexity = config.get('complexity', 'simple')
+                complexity = config.get("complexity", "simple")
                 self.aggregation = AggregationFactory.create_for_copresheaf(
                     stalk_dim=self.out_dim,
                     neighborhood_complexity=complexity,
-                    dropout=config.get('dropout', 0.0)
+                    dropout=config.get("dropout", 0.0),
                 )
                 # Track if this creates a multi-aggregation
-                if complexity == 'complex':
+                if complexity == "complex":
                     self.num_aggregation_methods = 3  # sum, mean, std
-            elif aggr in {'attention', 'set2set', 'lstm'}:
+            elif aggr in {"attention", "set2set", "lstm"}:
                 # Learnable aggregation methods require feature dimension
                 self.aggregation = Aggregation(
                     method=aggr,
                     dim=self.out_dim,
-                    num_heads=config.get('num_heads', 1),
-                    dropout=config.get('dropout', 0.0),
-                    **{k: v for k, v in config.items() if k not in ['num_heads', 'dropout']}
+                    num_heads=config.get("num_heads", 1),
+                    dropout=config.get("dropout", 0.0),
+                    **{k: v for k, v in config.items() if k not in ["num_heads", "dropout"]},
                 )
-            elif aggr == 'multi':
+            elif aggr == "multi":
                 # Multi-aggregation combines several methods
-                methods = config.get('methods', ['sum', 'mean', 'max'])
+                methods = config.get("methods", ["sum", "mean", "max"])
                 self.aggregation = AggregationFactory.create_multi(methods, self.out_dim)
                 # Store the number of methods for update function dimension calculation
                 self.num_aggregation_methods = len(methods)
@@ -246,8 +244,7 @@ class MessagePassing(PyGMessagePassing):
         """
         rho_input_dim = 2 * in_dim + edge_attr_dim  # [h_y, h_x, edge_attr]
         return nn.Sequential(
-            nn.Linear(rho_input_dim, out_dim),
-            nn.Tanh()  # Smooth nonlinearity for stable transport
+            nn.Linear(rho_input_dim, out_dim), nn.Tanh()  # Smooth nonlinearity for stable transport
         )
 
     def _default_message_factory(self, in_dim: int, out_dim: int):
@@ -282,7 +279,7 @@ class MessagePassing(PyGMessagePassing):
         """
         return nn.Sequential(
             nn.Linear(in_dim + out_dim, out_dim),  # [h_x, ρ(h_y)] → message
-            nn.ReLU()  # Nonlinearity for expressive message interactions
+            nn.ReLU(),  # Nonlinearity for expressive message interactions
         )
 
     def _default_update_factory(self, in_dim: int, out_dim: int):
@@ -319,15 +316,15 @@ class MessagePassing(PyGMessagePassing):
         return nn.Sequential(
             nn.Linear(in_dim + out_dim, out_dim),  # [h_x, ⊕messages] → hidden
             nn.ReLU(),  # Nonlinearity for complex updates
-            nn.Linear(out_dim, out_dim)  # hidden → h_x^{l+1}
+            nn.Linear(out_dim, out_dim),  # hidden → h_x^{l+1}
         )
 
     def forward(
-            self,
-            x: Tensor,
-            edge_index: Tensor,
-            edge_attr: Optional[Tensor] = None,
-            size: Optional[tuple] = None
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        edge_attr: Optional[Tensor] = None,
+        size: Optional[tuple] = None,
     ) -> Tensor:
         """
         Forward pass implementing complete copresheaf message passing (Proposition 1).
@@ -418,8 +415,10 @@ class MessagePassing(PyGMessagePassing):
             if edge_attr.dim() != 2 or edge_attr.size(0) != x_i.size(0):
                 raise ValueError("Edge attributes must be [num_edges, edge_attr_dim]")
             if edge_attr.size(1) != self.edge_attr_dim:
-                raise ValueError(f"Edge attribute dimension mismatch: "
-                                 f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}")
+                raise ValueError(
+                    f"Edge attribute dimension mismatch: "
+                    f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}"
+                )
 
         # Step 1: Apply copresheaf morphism ρ_{j→i}: F(j) → F(i)
         if edge_attr is not None:
@@ -436,11 +435,11 @@ class MessagePassing(PyGMessagePassing):
         return messages
 
     def aggregate(
-            self,
-            inputs: Tensor,
-            index: Tensor,
-            ptr: Optional[Tensor] = None,
-            dim_size: Optional[int] = None
+        self,
+        inputs: Tensor,
+        index: Tensor,
+        ptr: Optional[Tensor] = None,
+        dim_size: Optional[int] = None,
     ) -> Tensor:
         """
         Aggregate messages using the copresheaf Aggregation framework (⊕ operator).
@@ -506,7 +505,9 @@ class MessagePassing(PyGMessagePassing):
         update_input = torch.cat([x, inputs], dim=-1)  # [h_x^l, ⊕ messages]
         return self.update_fn(update_input)  # β(h_x^l, ⊕ messages)
 
-    def set_aggregation(self, new_aggregation: Union[str, Aggregation], config: Optional[dict] = None):
+    def set_aggregation(
+        self, new_aggregation: Union[str, Aggregation], config: Optional[dict] = None
+    ):
         """
         Dynamically change the aggregation method.
 
@@ -528,11 +529,11 @@ class MessagePassing(PyGMessagePassing):
             Dictionary with aggregation details for monitoring/debugging
         """
         return {
-            'method': self.aggregation.method,
-            'dim': self.aggregation.dim,
-            'num_heads': getattr(self.aggregation, 'num_heads', None),
-            'class': type(self.aggregation).__name__,
-            'parameters': sum(p.numel() for p in self.aggregation.parameters())
+            "method": self.aggregation.method,
+            "dim": self.aggregation.dim,
+            "num_heads": getattr(self.aggregation, "num_heads", None),
+            "class": type(self.aggregation).__name__,
+            "parameters": sum(p.numel() for p in self.aggregation.parameters()),
         }
 
 
@@ -614,15 +615,15 @@ class HigherOrderMessagePassing(nn.Module):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: int,
-            edge_attr_dim: int = 0,
-            num_neighborhoods: int = 1,
-            aggr: Union[str, Aggregation, list[Union[str, Aggregation]]] = 'sum',
-            combine_method: str = 'concat',
-            aggregation_config: Optional[dict] = None,
-            **kwargs
+        self,
+        in_dim: int,
+        out_dim: int,
+        edge_attr_dim: int = 0,
+        num_neighborhoods: int = 1,
+        aggr: Union[str, Aggregation, list[Union[str, Aggregation]]] = "sum",
+        combine_method: str = "concat",
+        aggregation_config: Optional[dict] = None,
+        **kwargs,
     ):
         super().__init__()
 
@@ -638,16 +639,10 @@ class HigherOrderMessagePassing(nn.Module):
         self._init_combination_function()
 
         # Final update function β(h_x, ⋀(...))
-        self.final_update = nn.Sequential(
-            nn.Linear(in_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        self.final_update = nn.Sequential(nn.Linear(in_dim + out_dim, out_dim), nn.ReLU())
 
     def _init_neighborhood_layers(
-            self,
-            aggr: Union[str, Aggregation, list],
-            edge_attr_dim: int,
-            config: Optional[dict]
+        self, aggr: Union[str, Aggregation, list], edge_attr_dim: int, config: Optional[dict]
     ):
         """
         Initialize MessagePassing layers for each neighborhood with tailored aggregation.
@@ -686,8 +681,10 @@ class HigherOrderMessagePassing(nn.Module):
         elif isinstance(aggr, list):
             # Different aggregation per neighborhood
             if len(aggr) != self.num_neighborhoods:
-                raise ValueError(f"Aggregation list length ({len(aggr)}) must match "
-                                 f"num_neighborhoods ({self.num_neighborhoods})")
+                raise ValueError(
+                    f"Aggregation list length ({len(aggr)}) must match "
+                    f"num_neighborhoods ({self.num_neighborhoods})"
+                )
             aggregations = aggr
         else:
             raise TypeError("aggr must be str, Aggregation, or list thereof")
@@ -700,14 +697,14 @@ class HigherOrderMessagePassing(nn.Module):
             neighborhood_config = config.copy()
 
             # Add neighborhood-specific configuration if provided
-            if f'neighborhood_{k}' in config:
-                neighborhood_config.update(config[f'neighborhood_{k}'])
+            if f"neighborhood_{k}" in config:
+                neighborhood_config.update(config[f"neighborhood_{k}"])
 
             # Optionally set complexity based on neighborhood type
-            if 'complexity_per_neighborhood' in config:
-                complexities = config['complexity_per_neighborhood']
+            if "complexity_per_neighborhood" in config:
+                complexities = config["complexity_per_neighborhood"]
                 if k < len(complexities):
-                    neighborhood_config['complexity'] = complexities[k]
+                    neighborhood_config["complexity"] = complexities[k]
 
             # Create MessagePassing layer with neighborhood-specific aggregation
             layer = MessagePassing(
@@ -715,7 +712,7 @@ class HigherOrderMessagePassing(nn.Module):
                 out_dim=self.out_dim,
                 edge_attr_dim=edge_attr_dim,
                 aggr=neighborhood_aggr,
-                aggregation_config=neighborhood_config
+                aggregation_config=neighborhood_config,
             )
 
             self.neighborhood_layers.append(layer)
@@ -760,27 +757,29 @@ class HigherOrderMessagePassing(nn.Module):
         - Sum/Mean: Parameter efficiency, assumes similar neighborhood semantics
         - Future extensions: Learned attention weighting across neighborhoods
         """
-        if self.combine_method == 'concat':
+        if self.combine_method == "concat":
             # Concatenation requires projection from expanded dimension
             combine_input_dim = self.num_neighborhoods * self.out_dim
-        elif self.combine_method in ['sum', 'mean']:
+        elif self.combine_method in ["sum", "mean"]:
             # Sum/mean preserve dimension
             combine_input_dim = self.out_dim
         else:
-            raise ValueError(f"Unknown combine_method '{self.combine_method}'. "
-                             f"Supported: 'concat', 'sum', 'mean'")
+            raise ValueError(
+                f"Unknown combine_method '{self.combine_method}'. "
+                f"Supported: 'concat', 'sum', 'mean'"
+            )
 
         # Learnable combination function
         self.combine_fn = nn.Sequential(
             nn.Linear(combine_input_dim, self.out_dim),
-            nn.ReLU()  # Nonlinearity for expressive combinations
+            nn.ReLU(),  # Nonlinearity for expressive combinations
         )
 
     def forward(
-            self,
-            x: Tensor,
-            edge_index_list: list[Tensor],
-            edge_attr_list: Optional[list[Optional[Tensor]]] = None
+        self,
+        x: Tensor,
+        edge_index_list: list[Tensor],
+        edge_attr_list: Optional[list[Optional[Tensor]]] = None,
     ) -> Tensor:
         """
         Forward pass implementing higher-order copresheaf message passing (Proposition 3).
@@ -835,12 +834,16 @@ class HigherOrderMessagePassing(nn.Module):
             edge_attr_list = [None] * len(edge_index_list)
 
         if len(edge_index_list) != self.num_neighborhoods:
-            raise ValueError(f"Expected {self.num_neighborhoods} edge_index tensors, "
-                             f"got {len(edge_index_list)}")
+            raise ValueError(
+                f"Expected {self.num_neighborhoods} edge_index tensors, "
+                f"got {len(edge_index_list)}"
+            )
 
         if len(edge_attr_list) != self.num_neighborhoods:
-            raise ValueError(f"Expected {self.num_neighborhoods} edge_attr tensors, "
-                             f"got {len(edge_attr_list)}")
+            raise ValueError(
+                f"Expected {self.num_neighborhoods} edge_attr tensors, "
+                f"got {len(edge_attr_list)}"
+            )
 
         # Step 1: Process each neighborhood independently with specific aggregation
         neighborhood_outputs = []
@@ -860,8 +863,8 @@ class HigherOrderMessagePassing(nn.Module):
 
             # Collect aggregation information for analysis
             aggr_info = self.neighborhood_layers[k].get_aggregation_info()
-            aggr_info['neighborhood_index'] = k
-            aggr_info['num_edges'] = edge_index.size(1)
+            aggr_info["neighborhood_index"] = k
+            aggr_info["num_edges"] = edge_index.size(1)
             aggregation_info.append(aggr_info)
 
         # Step 2: Combine information across neighborhoods using ⋀
@@ -912,15 +915,15 @@ class HigherOrderMessagePassing(nn.Module):
             raise ValueError(f"Expected {self.num_neighborhoods} neighborhood outputs")
 
         # Apply specified combination strategy
-        if self.combine_method == 'concat':
+        if self.combine_method == "concat":
             # Concatenate: [⊕_1, ⊕_2, ..., ⊕_n]
             combined = torch.cat(neighborhood_outputs, dim=-1)
 
-        elif self.combine_method == 'sum':
+        elif self.combine_method == "sum":
             # Element-wise sum: ⊕_1 + ⊕_2 + ... + ⊕_n
             combined = torch.stack(neighborhood_outputs, dim=0).sum(dim=0)
 
-        elif self.combine_method == 'mean':
+        elif self.combine_method == "mean":
             # Element-wise mean: (⊕_1 + ⊕_2 + ... + ⊕_n) / n
             combined = torch.stack(neighborhood_outputs, dim=0).mean(dim=0)
 
@@ -931,10 +934,10 @@ class HigherOrderMessagePassing(nn.Module):
         return self.combine_fn(combined)
 
     def set_neighborhood_aggregation(
-            self,
-            neighborhood_idx: int,
-            new_aggregation: Union[str, Aggregation],
-            config: Optional[dict] = None
+        self,
+        neighborhood_idx: int,
+        new_aggregation: Union[str, Aggregation],
+        config: Optional[dict] = None,
     ):
         """
         Dynamically update aggregation for a specific neighborhood.
@@ -960,8 +963,10 @@ class HigherOrderMessagePassing(nn.Module):
             config: Additional configuration for the new aggregation
         """
         if not (0 <= neighborhood_idx < self.num_neighborhoods):
-            raise IndexError(f"Neighborhood index {neighborhood_idx} out of range "
-                             f"[0, {self.num_neighborhoods})")
+            raise IndexError(
+                f"Neighborhood index {neighborhood_idx} out of range "
+                f"[0, {self.num_neighborhoods})"
+            )
 
         # Update the specific neighborhood's aggregation
         self.neighborhood_layers[neighborhood_idx].set_aggregation(new_aggregation, config)
@@ -983,32 +988,34 @@ class HigherOrderMessagePassing(nn.Module):
             Comprehensive dictionary with aggregation configuration details
         """
         summary = {
-            'total_neighborhoods': self.num_neighborhoods,
-            'inter_neighborhood_combination': self.combine_method,
-            'neighborhoods': [],
-            'total_aggregation_parameters': 0,
-            'combination_parameters': sum(p.numel() for p in self.combine_fn.parameters()),
-            'update_parameters': sum(p.numel() for p in self.final_update.parameters())
+            "total_neighborhoods": self.num_neighborhoods,
+            "inter_neighborhood_combination": self.combine_method,
+            "neighborhoods": [],
+            "total_aggregation_parameters": 0,
+            "combination_parameters": sum(p.numel() for p in self.combine_fn.parameters()),
+            "update_parameters": sum(p.numel() for p in self.final_update.parameters()),
         }
 
         # Collect information from each neighborhood
         for k, layer in enumerate(self.neighborhood_layers):
             neighborhood_info = layer.get_aggregation_info()
-            neighborhood_info.update({
-                'neighborhood_index': k,
-                'neighborhood_type': f'N_{k}',  # Mathematical notation
-            })
-            summary['neighborhoods'].append(neighborhood_info)
-            summary['total_aggregation_parameters'] += neighborhood_info['parameters']
+            neighborhood_info.update(
+                {
+                    "neighborhood_index": k,
+                    "neighborhood_type": f"N_{k}",  # Mathematical notation
+                }
+            )
+            summary["neighborhoods"].append(neighborhood_info)
+            summary["total_aggregation_parameters"] += neighborhood_info["parameters"]
 
         # Add derived statistics
-        summary['avg_parameters_per_neighborhood'] = (
-                summary['total_aggregation_parameters'] / self.num_neighborhoods
+        summary["avg_parameters_per_neighborhood"] = (
+            summary["total_aggregation_parameters"] / self.num_neighborhoods
         )
-        summary['total_parameters'] = (
-                summary['total_aggregation_parameters'] +
-                summary['combination_parameters'] +
-                summary['update_parameters']
+        summary["total_parameters"] = (
+            summary["total_aggregation_parameters"]
+            + summary["combination_parameters"]
+            + summary["update_parameters"]
         )
 
         return summary
@@ -1031,5 +1038,7 @@ class HigherOrderMessagePassing(nn.Module):
             3: "Higher-order (2-3): Face-volume connections, 3D structure",
         }
 
-        return {f"neighborhood_{k}": common_types.get(k, f"Custom neighborhood type {k}")
-                for k in range(self.num_neighborhoods)}
+        return {
+            f"neighborhood_{k}": common_types.get(k, f"Custom neighborhood type {k}")
+            for k in range(self.num_neighborhoods)
+        }

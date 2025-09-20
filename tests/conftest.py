@@ -52,10 +52,7 @@ def set_random_seed():
 def simple_graph() -> tuple[torch.Tensor, torch.Tensor]:
     """Create a simple test graph."""
     # Triangle graph
-    edge_index = torch.tensor([
-        [0, 1, 2, 0],
-        [1, 2, 0, 2]
-    ])
+    edge_index = torch.tensor([[0, 1, 2, 0], [1, 2, 0, 2]])
     x = torch.randn(3, 8)
     return x, edge_index
 
@@ -75,13 +72,7 @@ def batch_graphs() -> dict:
     edge_index = torch.cat([triangle_edges, square_edges], dim=1)
     batch = torch.tensor([0, 0, 0, 1, 1, 1, 1])
 
-    return {
-        'x': x,
-        'edge_index': edge_index,
-        'batch': batch,
-        'num_graphs': 2,
-        'num_nodes': 7
-    }
+    return {"x": x, "edge_index": edge_index, "batch": batch, "num_graphs": 2, "num_nodes": 7}
 
 
 @pytest.fixture
@@ -97,21 +88,21 @@ def higher_order_complex() -> dict:
         # 0-1 incidence (node-to-edge)
         torch.tensor([[0, 1, 2], [0, 1, 2]]),
         # 1-2 incidence (edge-to-face)
-        torch.tensor([[0, 1], [0, 0]])
+        torch.tensor([[0, 1], [0, 0]]),
     ]
 
     return {
-        'x': x,
-        'edge_index_list': edge_index_list,
-        'num_nodes': num_nodes,
-        'num_neighborhoods': 3
+        "x": x,
+        "edge_index_list": edge_index_list,
+        "num_nodes": num_nodes,
+        "num_neighborhoods": 3,
     }
 
 
 @pytest.fixture
 def device_cpu():
     """CPU device for testing."""
-    return torch.device('cpu')
+    return torch.device("cpu")
 
 
 @pytest.fixture
@@ -124,7 +115,7 @@ def skip_if_no_cuda():
 @pytest.fixture
 def tolerance():
     """Default tolerance for numerical comparisons."""
-    return {'rtol': 1e-5, 'atol': 1e-5}
+    return {"rtol": 1e-5, "atol": 1e-5}
 
 
 # Markers for test categorization
@@ -133,15 +124,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
-    config.addinivalue_line(
-        "markers", "gpu: marks tests that require GPU"
-    )
-    config.addinivalue_line(
-        "markers", "integration: marks integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "unit: marks unit tests"
-    )
+    config.addinivalue_line("markers", "gpu: marks tests that require GPU")
+    config.addinivalue_line("markers", "integration: marks integration tests")
+    config.addinivalue_line("markers", "unit: marks unit tests")
 
 
 # Parametrized fixtures for common test scenarios
@@ -151,7 +136,7 @@ def feature_dim(request):
     return request.param
 
 
-@pytest.fixture(params=['sum', 'mean', 'max'])
+@pytest.fixture(params=["sum", "mean", "max"])
 def aggregation_method(request):
     """Different aggregation methods to test."""
     return request.param

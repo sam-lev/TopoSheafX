@@ -42,7 +42,7 @@ class Conv(MessagePassing):
         bias (bool): Whether to add learnable bias.
     """
 
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0, aggr='sum', bias=True, **kwargs):
+    def __init__(self, in_dim, out_dim, edge_attr_dim=0, aggr="sum", bias=True, **kwargs):
         super().__init__(
             in_dim=in_dim,
             out_dim=out_dim,
@@ -51,14 +51,14 @@ class Conv(MessagePassing):
             copresheaf_map_factory=self._conv_copresheaf_factory,
             message_factory=self._conv_message_factory,
             update_factory=self._conv_update_factory,
-            **kwargs
+            **kwargs,
         )
 
         # Optional bias
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
         self.reset_parameters()
 
@@ -68,20 +68,14 @@ class Conv(MessagePassing):
         This matches the rho_map from your original Conv class.
         """
         rho_input_dim = 2 * in_dim + edge_attr_dim
-        return nn.Sequential(
-            nn.Linear(rho_input_dim, out_dim),
-            nn.Tanh()
-        )
+        return nn.Sequential(nn.Linear(rho_input_dim, out_dim), nn.Tanh())
 
     def _conv_message_factory(self, in_dim: int, out_dim: int):
         """
         Factory for the message function α: combines h_x and ρ(h_y).
         This matches the alpha from your original Conv class.
         """
-        return nn.Sequential(
-            nn.Linear(in_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        return nn.Sequential(nn.Linear(in_dim + out_dim, out_dim), nn.ReLU())
 
     def _conv_update_factory(self, in_dim: int, out_dim: int):
         """
@@ -89,9 +83,7 @@ class Conv(MessagePassing):
         This matches the Beta from your original Conv class.
         """
         return nn.Sequential(
-            nn.Linear(in_dim + out_dim, out_dim),
-            nn.ReLU(),
-            nn.Linear(out_dim, out_dim)
+            nn.Linear(in_dim + out_dim, out_dim), nn.ReLU(), nn.Linear(out_dim, out_dim)
         )
 
     def reset_parameters(self):
@@ -128,7 +120,7 @@ class Conv(MessagePassing):
         return out
 
     # Maintain backward compatibility with existing interface
-    def aggregate_messages(self, messages, index, num_nodes, reduce='sum'):
+    def aggregate_messages(self, messages, index, num_nodes, reduce="sum"):
         """
         Legacy method for backward compatibility with existing code.
         Delegates to the parent class's aggregate method.
@@ -141,6 +133,7 @@ class Conv(MessagePassing):
         Delegates to the parent class's update method.
         """
         return self.update(aggr_msg, h_x)
+
 
 #
 # class Conv(nn.Module):
@@ -297,8 +290,18 @@ class HigherOrderConv(HigherOrderMessagePassing):
         bias (bool): Whether to add learnable bias
     """
 
-    def __init__(self, in_dim, out_dim, edge_attr_dim=0, num_neighborhoods=1,
-                 edge_map=None, combine_method='concat', aggr='sum', bias=True, **kwargs):
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        edge_attr_dim=0,
+        num_neighborhoods=1,
+        edge_map=None,
+        combine_method="concat",
+        aggr="sum",
+        bias=True,
+        **kwargs,
+    ):
 
         if edge_map is None:
             edge_map = Conv
@@ -314,19 +317,19 @@ class HigherOrderConv(HigherOrderMessagePassing):
             num_neighborhoods=num_neighborhoods,
             aggr=aggr,
             combine_method=combine_method,
-            **kwargs
+            **kwargs,
         )
 
         # Replace the default neighborhood layers with our custom Conv layers
-        self.neighborhood_layers = nn.ModuleList([
-            neighborhood_factory() for _ in range(num_neighborhoods)
-        ])
+        self.neighborhood_layers = nn.ModuleList(
+            [neighborhood_factory() for _ in range(num_neighborhoods)]
+        )
 
         # Optional bias
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
         self.reset_parameters()
 
@@ -409,7 +412,6 @@ class HigherOrderConv(HigherOrderMessagePassing):
             out = out + self.bias
 
         return out
-
 
 
 # class HigherOrderConv(nn.Module):
@@ -505,6 +507,3 @@ class HigherOrderConv(HigherOrderMessagePassing):
 #         combined = torch.cat(aggregated, dim=-1)    # Stack [⊕_1, ..., ⊕_n]
 #         fused = self.combine(combined)              # ⓧ(⊕_1, ..., ⊕_n)
 #         return self.Beta(torch.cat([x, fused], dim=-1))  # β(h_x, ⓧ(...))
-
-
-

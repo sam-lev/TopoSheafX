@@ -12,6 +12,7 @@ class TinyDataset(torch.utils.data.IterableDataset):
     Minimal iterable yielding items compatible with trainer.py expectations:
       .x, .edge_index_list, .edge_attr_list (None), .batch, .y, .num_graphs
     """
+
     def __init__(self, n_items=6, nodes_per=6, in_dim=6, num_neighborhoods=1, num_classes=3):
         super().__init__()
         self.n_items = n_items
@@ -35,13 +36,16 @@ class TinyDataset(torch.utils.data.IterableDataset):
             item.num_graphs = 1
             yield item
 
+
 def test_train_and_evaluate_smoke():
     device = torch.device("cpu")
     in_dim, hidden, out_dim = 6, 12, 3
     model = CMPNN(in_dim, hidden, out_dim, num_layers=2, num_neighborhoods=1).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=5e-3)
 
-    ds = TinyDataset(n_items=8, nodes_per=5, in_dim=in_dim, num_neighborhoods=1, num_classes=out_dim)
+    ds = TinyDataset(
+        n_items=8, nodes_per=5, in_dim=in_dim, num_neighborhoods=1, num_classes=out_dim
+    )
 
     # one epoch
     loss1 = train(model, ds, opt, device)
