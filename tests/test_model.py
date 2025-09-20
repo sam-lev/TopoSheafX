@@ -317,7 +317,21 @@ class TestCHOMPNN:
                 num_neighborhoods=num_neighborhoods
             )
 
-            edge_index_list = setup_chompnn['edge_index_list'][:num_neighborhoods]
+            # Get available edge indices
+            available_edge_indices = setup_chompnn['edge_index_list']
+
+            # Create edge_index_list with duplicates if needed
+            if len(available_edge_indices) >= num_neighborhoods:
+                # We have enough, just slice
+                edge_index_list = available_edge_indices[:num_neighborhoods]
+            else:
+                # Need to duplicate some indices
+                edge_index_list = []
+                for i in range(num_neighborhoods):
+                    # Use modulo to cycle through available indices
+                    idx = i % len(available_edge_indices)
+                    edge_index_list.append(available_edge_indices[idx])
+
             output = model(
                 setup_chompnn['x'],
                 edge_index_list,
@@ -325,7 +339,6 @@ class TestCHOMPNN:
             )
 
             assert output.shape == (setup_chompnn['batch_size'], setup_chompnn['out_dim'])
-
 
 class TestModelIntegration:
     """Integration tests for model components."""
