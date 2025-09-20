@@ -7,9 +7,20 @@ on:
   pull_request:
     branches: [ "sam", "main" ]
 
+# Add this at the workflow level
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Or add permissions at the job level
+    # permissions:
+    #   contents: read
+    #   issues: write
+    #   pull-requests: write
     strategy:
       fail-fast: false
       matrix:
