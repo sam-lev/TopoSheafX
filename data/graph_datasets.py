@@ -2,6 +2,7 @@ import torch
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.datasets import TUDataset
 
+
 # python scripts/train_model.py --dataset synthetic_complex
 class SyntheticComplexDataset(InMemoryDataset):
     """
