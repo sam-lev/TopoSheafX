@@ -36,10 +36,7 @@ Usage:
 >>> model_ho = HigherOrderConv(8, 16, num_neighborhoods=1)
 >>> out = model_ho(x, [edge_index])
 
-"""
 
-# layer.py
-"""
 Core architecture classes for CMPNN and CHOMPNN models using Copresheaf-based message passing.
 
 These implementations follow the mathematical framework from "Copresheaf Topological Neural Networks"

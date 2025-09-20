@@ -1,11 +1,13 @@
 # tests/conftest.py
 import sys
 from pathlib import Path
-# typing imports removed - using builtins
 
 import numpy as np
 import pytest
 import torch
+
+# typing imports removed - using builtins
+
 
 # Make repo root importable if needed
 root = Path(__file__).resolve().parents[1]
