@@ -117,12 +117,29 @@ class MessagePassing(PyGMessagePassing):
         if message_factory is None:
             message_factory = self._default_message_factory
         if update_factory is None:
-            update_factory = self._default_update_factory
+            # For multi-aggregation, we need to adjust the update factory
+            if hasattr(self, 'num_aggregation_methods'):
+                update_factory = lambda in_d, out_d: self._multi_update_factory(
+                    in_d, out_d, self.num_aggregation_methods
+                )
+            else:
+                update_factory = self._default_update_factory
 
         # Core copresheaf components following Proposition 1
         self.copresheaf_map = copresheaf_map_factory(in_dim, out_dim, edge_attr_dim)  # ρ
         self.message_fn = message_factory(in_dim, out_dim)  # α
         self.update_fn = update_factory(in_dim, out_dim)  # β
+
+    def _multi_update_factory(self, in_dim: int, out_dim: int, num_methods: int):
+        """
+        Update factory for multi-aggregation that handles concatenated aggregation outputs.
+        """
+        aggregated_dim = out_dim * num_methods
+        return nn.Sequential(
+            nn.Linear(in_dim + aggregated_dim, out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim)
+        )
 
     def _init_aggregation(self, aggr: Union[str, Aggregation], config: Optional[dict]):
         """
@@ -154,6 +171,10 @@ class MessagePassing(PyGMessagePassing):
             aggr: Aggregation specification (string or Aggregation instance)
             config: Additional configuration parameters
         """
+
+        # Store the aggregation config for later use
+        self.aggregation_config = config or {}
+
         if isinstance(aggr, Aggregation):
             # Use provided Aggregation instance directly
             self.aggregation = aggr
@@ -169,6 +190,9 @@ class MessagePassing(PyGMessagePassing):
                     neighborhood_complexity=complexity,
                     dropout=config.get('dropout', 0.0)
                 )
+                # Track if this creates a multi-aggregation
+                if complexity == 'complex':
+                    self.num_aggregation_methods = 3  # sum, mean, std
             elif aggr in {'attention', 'set2set', 'lstm'}:
                 # Learnable aggregation methods require feature dimension
                 self.aggregation = Aggregation(
@@ -182,6 +206,8 @@ class MessagePassing(PyGMessagePassing):
                 # Multi-aggregation combines several methods
                 methods = config.get('methods', ['sum', 'mean', 'max'])
                 self.aggregation = AggregationFactory.create_multi(methods, self.out_dim)
+                # Store the number of methods for update function dimension calculation
+                self.num_aggregation_methods = len(methods)
             else:
                 # Basic aggregation methods (sum, mean, max, min, std, var)
                 self.aggregation = Aggregation(method=aggr, dim=self.out_dim, **config)
