@@ -287,4 +287,3 @@ class CopresheafGNN(nn.Module):
     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
         """Forward pass through configured model."""
         return self.model(x, edge_index_list, batch, edge_attr_list)
-

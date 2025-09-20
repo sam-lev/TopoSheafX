@@ -46,4 +46,3 @@ def test_chompnn_layer_param_grid(num_neighborhoods, toy_edges_1, toy_edges_2):
 
     assert out.shape == (x.size(0), out_dim)
     assert torch.isfinite(out).all()
-
