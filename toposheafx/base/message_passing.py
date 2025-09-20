@@ -26,7 +26,6 @@ from typing import Optional, Callable, Union, List, Dict, Any
 from torch import Tensor
 
 from toposheafx.utils.guards import _same_device, _check_index
-from toposheafx.utils.mlp import mlp_factory
 from toposheafx.base.aggregation import Aggregation, AggregationFactory
 
 

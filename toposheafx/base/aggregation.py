@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_scatter import scatter
-from typing import Optional, Union, Callable, Dict, Any
+from typing import Optional
 from torch import Tensor
 import torch.nn.functional as F
 

@@ -105,7 +105,7 @@ class TestConv:
             out_dim=setup_conv['out_dim']
         )
 
-        
+
         # Reset parameters
         conv.reset_parameters()
 

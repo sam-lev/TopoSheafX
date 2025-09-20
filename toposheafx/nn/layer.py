@@ -51,7 +51,6 @@ from torch import nn
 from torch_geometric.utils import scatter, softmax as segment_softmax
 from toposheafx.base.conv import Conv, HigherOrderConv
 from toposheafx.utils.guards import _same_device, _check_index
-from toposheafx.utils.mlp import mlp_factory
 
 
 class copresheaf_layer(nn.Module):
