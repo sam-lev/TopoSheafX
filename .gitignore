@@ -12,6 +12,8 @@ __pycache__/
 .DS_Store
 .DS_Store/
 
+# PyCharm Ignores
+*.idea/
 
 # Byte-compiled Python files
 *.pyc

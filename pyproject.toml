@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "toposheafx"
 version = "0.1.0"
-description = "Copresheaf Topological Neural Networks"
+description = "Copresheaf Topological Neural Networks (CMPNN/CHOMPNN) - message passing on combinatorial complexes"
 authors = [{name = "TopoSheafX Team"}]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -23,11 +23,12 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch>=2.0.0",
+    "torch>=2.0.0,<2.4.0",  # Match your conda environment
     "torch-geometric>=2.3.0",
     "torch-scatter>=2.1.0",
-    "numpy>=1.21.0",
+    "numpy>=1.21.0,<2.0.0",  # Avoid numpy 2.0 breaking changes
     "scipy>=1.7.0",
+    "tqdm>=4.60.0",  # Added from setup.py
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,28 @@ docs = [
     "sphinx-rtd-theme>=1.2.0",
     "sphinx-autodoc-typehints>=1.22.0",
 ]
+
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+    "pytest-timeout>=2.0.0",
+]
+
+[project.scripts]
+cmpnn-train = "scripts.train_model:main"
+
+[tool.setuptools]
+packages = ["toposheafx"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["toposheafx*"]
+exclude = ["tests*", "docs*", "examples*", "data*"]
+
+[tool.setuptools.package-data]
+toposheafx = ["*.yaml", "*.yml", "*.json"]
 
 [tool.ruff]
 line-length = 100
@@ -146,6 +169,7 @@ markers = [
 [tool.coverage.run]
 source = ["toposheafx"]
 branch = true
+relative_files = true  # CRITICAL: Added this to fix the coverage error
 omit = [
     "*/tests/*",
     "*/test_*.py",
