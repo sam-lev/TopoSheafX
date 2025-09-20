@@ -293,7 +293,7 @@ class CopresheafTransformerLayer(nn.Module):
         q = self.query(h_tgt).view(-1, self.heads, self.out_dim)
 
         # Scaled dot-product attention (Equation 7 in Appendix E)
-        attn_logits = (Q * K).sum(dim=-1) / (self.out_dim ** 0.5)
+        attn_logits = (q * k).sum(dim=-1) / (self.out_dim ** 0.5)
 
         # Normalize attention per target node
         logits_flat = attn_logits.reshape(-1)
@@ -312,7 +312,7 @@ class CopresheafTransformerLayer(nn.Module):
         # Combine copresheaf messages with attention-weighted values
         # This creates a richer message that incorporates both structural
         # transport (via copresheaf) and learned importance (via attention)
-        messages_attended = V * alpha.unsqueeze(-1)
+        messages_attended = v * alpha.unsqueeze(-1)
 
         # Aggregate messages to target nodes
         messages_flat = messages_attended.reshape(-1, self.heads * self.out_dim)
