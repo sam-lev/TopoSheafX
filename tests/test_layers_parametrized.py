@@ -2,7 +2,7 @@
 import pytest
 import torch
 
-from toposheafx.nn.layer import chompnn_layer, cmpnn_layer
+from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer
 
 
 @pytest.fixture
