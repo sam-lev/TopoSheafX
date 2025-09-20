@@ -50,7 +50,7 @@ class CMPNN(nn.Module):
         # Each layer refines node representations using copresheaf structure
         self.layers = nn.ModuleList(
             [
-                cmpnn_layer(
+                CMPNNLayer(
                     in_dim=hidden_dim,
                     out_dim=hidden_dim,
                     edge_attr_dim=edge_attr_dim,
@@ -159,7 +159,7 @@ class CHOMPNN(nn.Module):
         # Each implements full Proposition 3 with multiple neighborhoods
         self.layers = nn.ModuleList(
             [
-                chompnn_layer(
+                CHOMPNNLayer(
                     in_dim=hidden_dim,
                     out_dim=hidden_dim,
                     edge_attr_dim=edge_attr_dim,
@@ -288,102 +288,3 @@ class CopresheafGNN(nn.Module):
         """Forward pass through configured model."""
         return self.model(x, edge_index_list, batch, edge_attr_list)
 
-
-# from torch import nn as nn
-# from torch_geometric.utils import scatter
-#
-# from toposheafx.nn.layer import chompnn_layer, cmpnn_layer
-#
-#
-# class CMPNN(nn.Module):
-#     """
-#     Multi-layer Copresheaf Message Passing Neural Network for graph-level tasks,
-#     extended to support higher-dimensional cell complexes.
-#
-#     This model uses:
-#         - An encoder to project input features into hidden space.
-#         - Multiple CMPNNLayers with directional message passing.
-#         - Graph-level mean pooling followed by MLP readout.
-#
-#     Implements the forward update:
-#         h_x^{l+1} = β(h_x^l, ⊕_{y ∈ N(x)} α(h_x^l, ρ(h_y^l)))
-#
-#     Args:
-#         in_dim (int): Input dimension F(x)
-#         hidden_dim (int): Hidden layer dimension
-#         out_dim (int): Output prediction dimension (e.g., # of classes)
-#         num_layers (int): Number of stacked CMPNN layers
-#         edge_attr_dim (int): Edge feature dimensionality
-#     """
-#     def __init__(self, in_dim, hidden_dim, out_dim, num_layers=2, edge_attr_dim=0, num_neighborhoods=1):
-#         super().__init__()
-#         self.encoder = nn.Linear(in_dim, hidden_dim)
-#         self.layers = nn.ModuleList([
-#             cmpnn_layer(hidden_dim, hidden_dim, edge_attr_dim=edge_attr_dim, num_neighborhoods=num_neighborhoods)
-#             for _ in range(num_layers)
-#         ])
-#         self.readout = nn.Linear(hidden_dim, out_dim)
-#
-#     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
-#         """
-#         Args:
-#             x (Tensor): Node feature matrix [num_nodes, in_dim].
-#             edge_index_list (list of LongTensor): List of edge index tensors per neighborhood.
-#             batch (LongTensor): Batch vector assigning each node to a graph [num_nodes].
-#             edge_attr_list (list of Tensor, optional): List of edge attributes per neighborhood.
-#
-#         Returns:
-#             Tensor: Graph-level output vector [num_graphs, out_dim].
-#         """
-#         x = self.encoder(x)
-#         for layer in self.layers:
-#             x = layer(x, edge_index_list, edge_attr_list=edge_attr_list)
-#         graph_repr = scatter(x, batch, dim=0, reduce='mean')
-#         return self.readout(graph_repr)
-#
-#
-# class CHOMPNN(nn.Module):
-#     """
-#     CHOMPNN: Multi-layer Copresheaf Higher-Order Message Passing Neural Network.
-#
-#     This network stacks multiple CHOMPNNLayers for deep representation learning on
-#     combinatorial complexes. Includes:
-#         - Initial encoder to map input node features into hidden space
-#         - Multiple CHOMPNNLayer blocks
-#         - Readout MLP for graph-level classification
-#
-#     Args:
-#         in_dim (int): Dimension of input node features
-#         hidden_dim (int): Hidden feature size
-#         out_dim (int): Output dimension for prediction (e.g., number of classes)
-#         num_layers (int): Number of CHOMPNN layers
-#         edge_attr_dim (int): Dimension of edge attributes per neighborhood
-#         num_neighborhoods (int): Number of neighborhood functions per graph
-#     """
-#     def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3, edge_attr_dim=0, num_neighborhoods=1):
-#         super().__init__()
-#         self.encoder = nn.Linear(in_dim, hidden_dim)
-#         self.layers = nn.ModuleList([
-#             chompnn_layer(hidden_dim, hidden_dim, edge_attr_dim, num_neighborhoods)
-#             for _ in range(num_layers)
-#         ])
-#         self.readout = nn.Linear(hidden_dim, out_dim)
-#
-#     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
-#         """
-#         Forward pass through the full CHOMPNN model.
-#
-#         Args:
-#             x (Tensor): Node features [num_nodes, in_dim]
-#             edge_index_list (List[Tensor]): List of edge index tensors for each neighborhood
-#             batch (Tensor): Batch vector mapping each node to a graph [num_nodes]
-#             edge_attr_list (List[Tensor], optional): Edge attribute list per neighborhood
-#
-#         Returns:
-#             Tensor: Graph-level outputs [num_graphs, out_dim]
-#         """
-#         x = self.encoder(x)
-#         for layer in self.layers:
-#             x = layer(x, edge_index_list, edge_attr_list)
-#         graph_repr = scatter(x, batch, dim=0, reduce='mean')
-#         return self.readout(graph_repr)
