@@ -49,9 +49,9 @@ from torch_geometric.utils import scatter
 from torch_geometric.utils import softmax as segment_softmax
 
 from toposheafx.base.conv import Conv, HigherOrderConv
-from toposheafx.base.message_passing import HigherOrderMessagePassing
+from toposheafx.base.message_passing import HigherOrderMessagePassing, CrossDimensionalMessagePassing
 from toposheafx.utils.guards import _check_index, _same_device
-
+from toposheafx.data.simplicial import SimplicialFeatures
 
 class CopresheafLayer(nn.Module):
     """
@@ -380,6 +380,82 @@ class SimplicialComplexCopresheafLayer(nn.Module):
     def get_aggregation_info(self):
         """Get information about neighborhood-specific aggregations."""
         return self.copresheaf_layer.get_aggregation_summary()
+
+
+class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
+    """
+    Copresheaf layer supporting message passing across simplex dimensions.
+    """
+
+    def __init__(self, feature_dims, out_dims, neighborhoods_config):
+        """
+        Args:
+            feature_dims: dict {dim: feature_size} for each dimension
+            out_dims: dict {dim: output_size} for each dimension
+            neighborhoods_config: list of (name, source_dim, target_dim) tuples
+        """
+        super().__init__()
+
+        self.feature_dims = feature_dims
+        self.out_dims = out_dims
+
+        # Create cross-dimensional message passing modules
+        self.message_passers = nn.ModuleDict()
+
+        for name, source_dim, target_dim in neighborhoods_config:
+            self.message_passers[name] = CrossDimensionalMessagePassing(
+                source_dim=feature_dims[source_dim],
+                target_dim=feature_dims[target_dim],
+                out_dim=out_dims[target_dim]
+            )
+
+    def forward(self, features, neighborhoods):
+        """
+        Args:
+            features: SimplicialFeatures object
+            neighborhoods: dict from extract_cross_dimensional_neighborhoods
+
+        Returns:
+            SimplicialFeatures with updated features
+        """
+        # Initialize output for each dimension
+        updated_features = {}
+
+        # Group neighborhoods by target dimension
+        by_target = {}
+        for name, config in neighborhoods.items():
+            target = config['target_dim']
+            if target not in by_target:
+                by_target[target] = []
+            by_target[target].append((name, config))
+
+        # Update each dimension
+        for target_dim, dim_neighborhoods in by_target.items():
+            messages_list = []
+
+            for name, config in dim_neighborhoods:
+                source_dim = config['source_dim']
+                edge_index = config['edge_index']
+
+                if edge_index.shape[1] == 0:  # Skip empty neighborhoods
+                    continue
+
+                # Apply cross-dimensional message passing
+                x_source = features[source_dim]
+                x_target = features[target_dim]
+
+                messages = self.message_passers[name](
+                    x_source, x_target, edge_index
+                )
+                messages_list.append(messages)
+
+            # Combine messages from all neighborhoods targeting this dimension
+            if messages_list:
+                updated_features[target_dim] = sum(messages_list) / len(messages_list)
+            else:
+                updated_features[target_dim] = features[target_dim]
+
+        return SimplicialFeatures.from_dict(updated_features)
 #
 # from torch import nn as nn
 # from torch_geometric.nn import MessagePassing

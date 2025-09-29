@@ -11,9 +11,47 @@ from torch import nn
 import torch.nn.functional as F
 from torch_geometric.utils import scatter
 
-from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer, SimplicialComplexCopresheafLayer
+from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer, SimplicialComplexCopresheafLayer, MultiDimensionalSimplicialCopresheafLayer
 from toposheafx.base.message_passing import HigherOrderMessagePassing
 from toposheafx.base.aggregation import Aggregation
+from toposheafx.data.simplicial import SimplicialFeatures
+
+
+# Create a node-level version of CMPNN
+class NodeCMPNN(nn.Module):
+    """CMPNN adapted for node-level predictions."""
+
+    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3, num_neighborhoods=1):
+        super().__init__()
+
+        self.encoder = nn.Linear(in_dim, hidden_dim)
+
+        self.layers = nn.ModuleList([
+            CMPNNLayer(
+                in_dim=hidden_dim,
+                out_dim=hidden_dim,
+                num_neighborhoods=num_neighborhoods
+            )
+            for _ in range(num_layers)
+        ])
+
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, out_dim)
+        )
+
+    def forward(self, x, edge_index_list, edge_attr_list=None):
+        """Returns per-node predictions [num_nodes, out_dim]"""
+        x = F.relu(self.encoder(x))
+
+        for layer in self.layers:
+            x_new = layer(x, edge_index_list, edge_attr_list)
+            x = x + x_new if x.shape == x_new.shape else x_new
+            x = F.relu(x)
+
+        return self.readout(x)  # [num_nodes, out_dim]
 
 class CMPNN(nn.Module):
     """
@@ -402,3 +440,63 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
 
         # Final readout
         return self.readout(x)
+
+
+class CrossDimensionalSimplicialCopresheafNetwork(nn.Module):
+    """
+    Network supporting true cross-dimensional message passing.
+    """
+
+    def __init__(self, initial_dims, hidden_dims, out_dim, num_layers=3):
+        super().__init__()
+
+        # Initial encoders for each dimension
+        self.encoders = nn.ModuleDict({
+            str(dim): nn.Linear(initial_dims[dim], hidden_dims[dim])
+            for dim in initial_dims.keys()
+        })
+
+        # Neighborhood configuration - must match extract_cross_dimensional_neighborhoods
+        neighborhoods_config = [
+            ('0→0', 0, 0),  # Vertex adjacency
+            ('0→1', 0, 1),  # Vertex to edge
+            ('1→0', 1, 0),  # Edge to vertex
+            ('1→1', 1, 1),  # Edge adjacency
+            ('1→2', 1, 2),  # Edge to triangle
+            ('2→1', 2, 1),  # Triangle to edge
+            ('2→0', 2, 0),  # Triangle to vertex
+        ]
+
+        # Stack of cross-dimensional layers
+        self.layers = nn.ModuleList([
+            MultiDimensionalSimplicialCopresheafLayer(
+                feature_dims=hidden_dims,
+                out_dims=hidden_dims,
+                neighborhoods_config=neighborhoods_config
+            )
+            for _ in range(num_layers)
+        ])
+
+        # Final readout (only from vertices for node classification)
+        self.readout = nn.Linear(hidden_dims[0], out_dim)
+
+    def forward(self, features, neighborhoods):
+        """
+        Args:
+            features: SimplicialFeatures with raw features
+            neighborhoods: dict from extract_cross_dimensional_neighborhoods
+        """
+        # Encode each dimension
+        encoded = {}
+        for dim, x in features.features.items():
+            if x is not None:
+                encoded[dim] = F.relu(self.encoders[str(dim)](x))
+
+        features = SimplicialFeatures.from_dict(encoded)
+
+        # Apply cross-dimensional layers
+        for layer in self.layers:
+            features = layer(features, neighborhoods)
+
+        # Readout from vertices
+        return self.readout(features[0])

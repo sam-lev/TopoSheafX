@@ -1042,3 +1042,79 @@ class HigherOrderMessagePassing(nn.Module):
             f"neighborhood_{k}": common_types.get(k, f"Custom neighborhood type {k}")
             for k in range(self.num_neighborhoods)
         }
+
+
+class CrossDimensionalMessagePassing(MessagePassing):
+    """
+    Message passing between different simplex dimensions.
+
+    Implements: h_x^{l+1} = β(h_x^l, ⊕_{y∈N_k(x)} α_k(h_x^l, ρ_k(h_y^l)))
+    where x and y may have different dimensions.
+    """
+
+    def __init__(self, source_dim, target_dim, out_dim, aggr='sum', **kwargs):
+        # Pass required arguments to MessagePassing parent
+        super().__init__(
+            in_dim=target_dim,
+            out_dim=out_dim,
+            edge_attr_dim=0,
+            aggr=aggr,
+            **kwargs
+        )
+
+        self.source_dim = source_dim
+        self.target_dim = target_dim
+        self.out_dim = out_dim
+
+        # Cross-dimensional copresheaf morphism ρ_k: F(σ^k) → F(τ^k)
+        self.copresheaf_map = nn.Sequential(
+            nn.Linear(source_dim, (source_dim + target_dim) // 2),
+            nn.ReLU(),
+            nn.Linear((source_dim + target_dim) // 2, target_dim)
+        )
+
+        # Message function α_k
+        self.message_fn = nn.Sequential(
+            nn.Linear(target_dim + target_dim, out_dim),
+            nn.ReLU()
+        )
+
+        # Update function β
+        self.update_fn = nn.Sequential(
+            nn.Linear(target_dim + out_dim, out_dim),
+            nn.ReLU()
+        )
+
+    def forward(self, x_source, x_target, edge_index):
+        """
+        Args:
+            x_source: Features of source simplices [num_source, source_dim]
+            x_target: Features of target simplices [num_target, target_dim]
+            edge_index: [2, num_edges] where row=source indices, col=target indices
+        """
+        # Validate inputs
+        if edge_index.size(0) != 2:
+            raise ValueError("edge_index must be [2, num_edges]")
+
+        row, col = edge_index  # row=source, col=target
+
+        # Manually implement message passing for cross-dimensional case
+        # Step 1: Get source and target features for each edge
+        h_source = x_source[row]  # [num_edges, source_dim]
+        h_target = x_target[col]  # [num_edges, target_dim]
+
+        # Step 2: Apply copresheaf morphism ρ
+        transported = self.copresheaf_map(h_source)  # [num_edges, target_dim]
+
+        # Step 3: Create messages α(h_target, ρ(h_source))
+        message_input = torch.cat([h_target, transported], dim=-1)
+        messages = self.message_fn(message_input)  # [num_edges, out_dim]
+
+        # Step 4: Aggregate messages to target nodes using the aggregation framework
+        aggregated = self.aggregation(messages, col, dim_size=x_target.size(0))
+
+        # Step 5: Update target features β(h_target, aggregated)
+        update_input = torch.cat([x_target, aggregated], dim=-1)
+        updated = self.update_fn(update_input)
+
+        return updated
