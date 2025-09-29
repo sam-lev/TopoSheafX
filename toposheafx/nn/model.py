@@ -8,10 +8,12 @@ by Hajij et al., specifically for graph classification and regression tasks.
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch_geometric.utils import scatter
 
-from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer
-
+from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer, SimplicialComplexCopresheafLayer
+from toposheafx.base.message_passing import HigherOrderMessagePassing
+from toposheafx.base.aggregation import Aggregation
 
 class CMPNN(nn.Module):
     """
@@ -287,3 +289,116 @@ class CopresheafGNN(nn.Module):
     def forward(self, x, edge_index_list, batch, edge_attr_list=None):
         """Forward pass through configured model."""
         return self.model(x, edge_index_list, batch, edge_attr_list)
+
+
+class SimplicialComplexCopresheafNetwork(nn.Module):
+    """
+    Complete copresheaf neural network for learning on simplicial complexes.
+
+    Architecture:
+    1. Input encoder for initial features
+    2. Multiple copresheaf layers with different aggregations
+    3. Readout for final predictions
+    """
+
+    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3,
+                 dropout=0.1, aggregation_strategy='adaptive'):
+        super().__init__()
+
+        self.in_dim = in_dim
+        self.hidden_dim = hidden_dim
+        self.out_dim = out_dim
+        self.num_layers = num_layers
+
+        # Initial encoding
+        self.encoder = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_dim)
+        )
+
+        # Stack of copresheaf layers with different aggregation strategies
+        self.layers = nn.ModuleList()
+
+        for i in range(num_layers):
+            # Use different aggregation strategies at different depths
+            if aggregation_strategy == 'adaptive':
+                if i == 0:
+                    aggr = 'mean'  # Normalize early
+                elif i < num_layers - 1:
+                    aggr = 'sum'  # Accumulate middle
+                else:
+                    aggr = 'attention'  # Learn importance at end
+            else:
+                aggr = aggregation_strategy
+
+            # Create layer with appropriate aggregation
+            if aggr == 'attention':
+                # Use attention-based aggregation
+                layer = HigherOrderMessagePassing(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    num_neighborhoods=3,
+                    aggr=Aggregation('attention', dim=hidden_dim, num_heads=4),
+                    combine_method='concat'
+                )
+            else:
+                layer = SimplicialComplexCopresheafLayer(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    num_neighborhoods=3,
+                    aggregation=aggr
+                )
+
+            self.layers.append(layer)
+
+        # Layer norms for stability
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
+        ])
+
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+
+        # Final readout
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, out_dim)
+        )
+
+    def forward(self, x, edge_index_list, batch=None):
+        """
+        Forward pass through the network.
+
+        Args:
+            x: Node features [num_nodes, in_dim]
+            edge_index_list: List of edge indices for neighborhoods
+            batch: Batch assignment for graph-level tasks
+
+        Returns:
+            Output predictions [num_nodes or num_graphs, out_dim]
+        """
+        # Initial encoding
+        x = self.encoder(x)
+
+        # Apply copresheaf layers with residual connections
+        for i, (layer, norm) in enumerate(zip(self.layers, self.layer_norms)):
+            # Copresheaf message passing
+            x_new = layer(x, edge_index_list)
+
+            # Residual + normalization
+            x = norm(x + self.dropout(x_new))
+
+            # Activation
+            if i < self.num_layers - 1:
+                x = F.relu(x)
+
+        # Graph-level pooling if batch is provided
+        if batch is not None:
+            from torch_geometric.utils import scatter
+            x = scatter(x, batch, dim=0, reduce='mean')
+
+        # Final readout
+        return self.readout(x)

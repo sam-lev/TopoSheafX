@@ -49,6 +49,7 @@ from torch_geometric.utils import scatter
 from torch_geometric.utils import softmax as segment_softmax
 
 from toposheafx.base.conv import Conv, HigherOrderConv
+from toposheafx.base.message_passing import HigherOrderMessagePassing
 from toposheafx.utils.guards import _check_index, _same_device
 
 
@@ -324,6 +325,61 @@ class CopresheafTransformerLayer(nn.Module):
         return self.out_proj(aggregated)
 
 
+class SimplicialComplexCopresheafLayer(nn.Module):
+    """
+    Copresheaf message passing layer specialized for simplicial complexes.
+
+    This layer implements Proposition 3 with neighborhoods specific to
+    simplicial topology:
+    - Adjacency (vertex-vertex)
+    - Incidence (vertex-edge)
+    - Co-boundary (edge-triangle)
+    """
+
+    def __init__(self, in_dim, out_dim, num_neighborhoods=3,
+                 aggregation='sum', combine_method='concat'):
+        super().__init__()
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.num_neighborhoods = num_neighborhoods
+
+        # Use HigherOrderMessagePassing for multi-neighborhood processing
+        self.copresheaf_layer = HigherOrderMessagePassing(
+            in_dim=in_dim,
+            out_dim=out_dim,
+            num_neighborhoods=num_neighborhoods,
+            aggr=aggregation,
+            combine_method=combine_method
+        )
+
+        # Neighborhood-specific aggregation strategies
+        self.neighborhood_configs = {
+            0: {'name': 'adjacency', 'aggr': 'mean'},  # Normalize by degree
+            1: {'name': 'incidence', 'aggr': 'sum'},  # Accumulate from edges
+            2: {'name': 'coboundary', 'aggr': 'max'}  # Dominant triangle feature
+        }
+
+    def forward(self, x, edge_index_list, simplex_features=None):
+        """
+        Forward pass with copresheaf message passing.
+
+        Args:
+            x: Node features [num_nodes, in_dim]
+            edge_index_list: List of edge indices for each neighborhood
+            simplex_features: Optional higher-order simplex features
+
+        Returns:
+            Updated node features [num_nodes, out_dim]
+        """
+        # Apply copresheaf message passing across all neighborhoods
+        out = self.copresheaf_layer(x, edge_index_list)
+
+        return out
+
+    def get_aggregation_info(self):
+        """Get information about neighborhood-specific aggregations."""
+        return self.copresheaf_layer.get_aggregation_summary()
 #
 # from torch import nn as nn
 # from torch_geometric.nn import MessagePassing
