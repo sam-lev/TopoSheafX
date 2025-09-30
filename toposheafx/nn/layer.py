@@ -456,6 +456,286 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
                 updated_features[target_dim] = features[target_dim]
 
         return SimplicialFeatures.from_dict(updated_features)
+
+
+# Continuous Hodge Laplacians for Copresheaves working with
+# restriction maps between different levels of a simplicial complex
+class ContinuousCopresheafLayer:
+    def __init__(self, k_simplex_dim, t_d, t_u):
+        self.t_d = nn.Parameter(torch.tensor(t_d))  # Learnable time params
+        self.t_u = nn.Parameter(torch.tensor(t_u))
+        self.L_k_down = None  # Lower Hodge Laplacian
+        self.L_k_up = None  # Upper Hodge Laplacian
+
+    def forward(self, X_k, X_k_down, X_k_up, B_k, B_k_plus_1):
+        # Compute Hodge Laplacians
+        self.L_k_down = B_k.T @ B_k
+        self.L_k_up = B_k_plus_1 @ B_k_plus_1.T
+
+        # Continuous diffusion (COSIMO-style)
+        # Use matrix exponential: e^(-t*L)
+        diff_down = torch.matrix_exp(-self.t_d * self.L_k_down) @ X_k_down
+        diff_up = torch.matrix_exp(-self.t_u * self.L_k_up) @ X_k_up
+        diff_joint = (torch.matrix_exp(-self.t_d * self.L_k_down) +
+                      torch.matrix_exp(-self.t_u * self.L_k_up)) @ X_k
+
+        return diff_down, diff_joint, diff_up
+
+
+class ContinuousCopresheafLayer(nn.Module):
+    """
+    Continuous copresheaf layer integrating COSIMO methodology with copresheaf theory.
+
+    This layer combines:
+    1. Copresheaf morphisms (restriction maps between stalks)
+    2. Continuous Hodge-Laplacian dynamics (COSIMO approach)
+    3. Multi-scale information flow (lower/upper/joint dynamics)
+
+    Mathematical Framework:
+    For each k-simplex x with neighborhoods:
+    - Lower: (k-1)-simplices → k-simplices (faces)
+    - Upper: (k+1)-simplices → k-simplices (cofaces)
+
+    Dynamics:
+    - Independent diffusion: e^(-t_d * L_k,d) @ x_k,d and e^(-t_u * L_k,u) @ x_k,u
+    - Joint diffusion: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ x_k
+    - Final: x_k' = φ(x_k,d' + x_k' + x_k,u')
+
+    Args:
+        in_dim: Input feature dimension
+        out_dim: Output feature dimension
+        k_simplex_dim: Dimension of simplices (0=nodes, 1=edges, 2=triangles)
+        t_d_init: Initial lower time parameter
+        t_u_init: Initial upper time parameter
+        learnable_t: Whether time parameters are learnable
+        K: Number of eigenvectors for approximation
+        combine_method: How to combine dynamics ('sum', 'concat', 'attention')
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            out_dim: int,
+            k_simplex_dim: int = 1,
+            t_d_init: float = 0.1,
+            t_u_init: float = 0.1,
+            learnable_t: bool = True,
+            K: Optional[int] = None,
+            combine_method: str = 'sum'
+    ):
+        super().__init__()
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.k_simplex_dim = k_simplex_dim
+        self.K = K
+        self.combine_method = combine_method
+
+        # Learnable time parameters
+        if learnable_t:
+            self.t_d = nn.Parameter(torch.tensor(t_d_init))
+            self.t_u = nn.Parameter(torch.tensor(t_u_init))
+        else:
+            self.register_buffer('t_d', torch.tensor(t_d_init))
+            self.register_buffer('t_u', torch.tensor(t_u_init))
+
+        # Projection layers for each dynamics component
+        self.proj_down = nn.Linear(in_dim, out_dim)
+        self.proj_up = nn.Linear(in_dim, out_dim)
+        self.proj_joint = nn.Linear(in_dim, out_dim)
+
+        # Combination layer
+        if combine_method == 'concat':
+            self.combine = nn.Sequential(
+                nn.Linear(3 * out_dim, out_dim),
+                nn.ReLU()
+            )
+        elif combine_method == 'attention':
+            self.attention = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
+        elif combine_method == 'sum':
+            self.combine = None
+        else:
+            raise ValueError(f"Unknown combine_method: {combine_method}")
+
+        # Final update function (copresheaf Beta operator)
+        self.update_fn = nn.Sequential(
+            nn.Linear(in_dim + out_dim, out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim)
+        )
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """Initialize parameters."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+    def forward(
+            self,
+            X_k: torch.Tensor,
+            X_k_down: torch.Tensor,
+            X_k_up: torch.Tensor,
+            B_k: torch.Tensor,
+            B_k_plus_1: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Forward pass implementing continuous copresheaf dynamics.
+
+        Args:
+            X_k: Features on k-simplices [num_k_simplices, in_dim]
+            X_k_down: Features projected from (k-1)-simplices [num_k_simplices, in_dim]
+            X_k_up: Features projected from (k+1)-simplices [num_k_simplices, in_dim]
+            B_k: Boundary operator k [num_k-1_simplices, num_k_simplices]
+            B_k_plus_1: Boundary operator k+1 (optional)
+
+        Returns:
+            Updated features [num_k_simplices, out_dim]
+        """
+        # Compute Hodge Laplacians
+        L_k_down = B_k.T @ B_k
+        L_k_up = B_k_plus_1 @ B_k_plus_1.T if B_k_plus_1 is not None else None
+
+        # Independent lower dynamics: e^(-t_d * L_k,d) @ X_k,d
+        diff_down = continuous_simplicial_conv(X_k_down, L_k_down, self.t_d, self.K)
+        diff_down = self.proj_down(diff_down)
+
+        # Independent upper dynamics: e^(-t_u * L_k,u) @ X_k,u
+        if L_k_up is not None:
+            diff_up = continuous_simplicial_conv(X_k_up, L_k_up, self.t_u, self.K)
+            diff_up = self.proj_up(diff_up)
+        else:
+            diff_up = torch.zeros_like(diff_down)
+
+        # Joint dynamics: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ X_k
+        diff_joint = continuous_simplicial_conv(X_k, L_k_down, self.t_d, self.K)
+        if L_k_up is not None:
+            diff_joint = diff_joint + continuous_simplicial_conv(X_k, L_k_up, self.t_u, self.K)
+        diff_joint = self.proj_joint(diff_joint)
+
+        # Combine dynamics components
+        if self.combine_method == 'sum':
+            combined = diff_down + diff_joint + diff_up
+        elif self.combine_method == 'concat':
+            combined = torch.cat([diff_down, diff_joint, diff_up], dim=-1)
+            combined = self.combine(combined)
+        elif self.combine_method == 'attention':
+            # Stack as sequence: [batch, 3, out_dim]
+            stacked = torch.stack([diff_down, diff_joint, diff_up], dim=1)
+            combined, _ = self.attention(stacked, stacked, stacked)
+            combined = combined.mean(dim=1)  # Average over sequence
+
+        # Final update with residual connection (copresheaf Beta operator)
+        if X_k.size(-1) == combined.size(-1):
+            out = self.update_fn(torch.cat([X_k, combined], dim=-1))
+        else:
+            # If dimensions don't match, project X_k first
+            X_k_proj = nn.Linear(X_k.size(-1), combined.size(-1), device=X_k.device)(X_k)
+            out = self.update_fn(torch.cat([X_k_proj, combined], dim=-1))
+
+        return out
+
+    def get_effective_time_constants(self) -> dict:
+        """Return current time constants for monitoring."""
+        return {
+            't_d': self.t_d.item(),
+            't_u': self.t_u.item()
+        }
+
+
+class ContinuousCHOMPNNLayer(nn.Module):
+    """
+    Continuous Higher-Order Message Passing layer combining:
+    - Multiple neighborhoods (Proposition 3)
+    - Continuous Hodge-Laplacian dynamics (COSIMO)
+    - Copresheaf morphisms
+
+    This represents the full integration of all three papers' methodologies.
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            out_dim: int,
+            num_neighborhoods: int = 3,
+            t_d_init: float = 0.1,
+            t_u_init: float = 0.1,
+            learnable_t: bool = True,
+            K: Optional[int] = None,
+            combine_method: str = 'concat'
+    ):
+        super().__init__()
+
+        self.num_neighborhoods = num_neighborhoods
+
+        # One continuous copresheaf layer per neighborhood
+        self.neighborhood_layers = nn.ModuleList([
+            ContinuousCopresheafLayer(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                k_simplex_dim=k,
+                t_d_init=t_d_init,
+                t_u_init=t_u_init,
+                learnable_t=learnable_t,
+                K=K,
+                combine_method='sum'  # Inner combination
+            )
+            for k in range(num_neighborhoods)
+        ])
+
+        # Cross-neighborhood combination
+        if combine_method == 'concat':
+            self.combine = nn.Sequential(
+                nn.Linear(num_neighborhoods * out_dim, out_dim),
+                nn.ReLU()
+            )
+        elif combine_method == 'sum':
+            self.combine = None
+
+        self.combine_method = combine_method
+
+    def forward(
+            self,
+            features_dict: dict,  # {0: X_0, 1: X_1, 2: X_2, ...}
+            boundary_operators: dict  # {1: B_1, 2: B_2, ...}
+    ) -> dict:
+        """
+        Forward pass across multiple simplex dimensions.
+
+        Args:
+            features_dict: Features per simplex dimension
+            boundary_operators: Boundary operators per dimension
+
+        Returns:
+            Updated features per dimension
+        """
+        outputs = {}
+        all_updates = []
+
+        for k in range(self.num_neighborhoods):
+            if k not in features_dict:
+                continue
+
+            X_k = features_dict[k]
+            X_k_down = boundary_operators[k].T @ features_dict.get(k - 1, torch.zeros_like(
+                X_k)) if k > 0 else torch.zeros_like(X_k)
+            X_k_up = boundary_operators.get(k + 1, torch.zeros(X_k.size(0), X_k.size(0),
+                                                               device=X_k.device)) @ features_dict.get(k + 1,
+                                                                                                       torch.zeros_like(
+                                                                                                           X_k))
+
+            B_k = boundary_operators.get(k, None)
+            B_k_plus_1 = boundary_operators.get(k + 1, None)
+
+            if B_k is not None:
+                updated = self.neighborhood_layers[k](X_k, X_k_down, X_k_up, B_k, B_k_plus_1)
+                outputs[k] = updated
+                all_updates.append(updated)
+
+        return outputs
 #
 # from torch import nn as nn
 # from torch_geometric.nn import MessagePassing

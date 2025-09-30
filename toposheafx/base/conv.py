@@ -23,8 +23,9 @@ Usage:
 
 import torch
 import torch.nn as nn
+from typing import Optional, Tuple
+from toposheafx.base.message_passing import MessagePassing, HigherOrderMessagePassing
 
-from toposheafx.base.message_passing import HigherOrderMessagePassing, MessagePassing
 
 
 class Conv(MessagePassing):
@@ -135,6 +136,253 @@ class Conv(MessagePassing):
         return self.update(aggr_msg, h_x)
 
 
+
+"""
+Continuous simplicial convolution operations based on COSIMO methodology.
+Integrates continuous Hodge-Laplacian dynamics with copresheaf message passing.
+"""
+def continuous_simplicial_conv(
+        x_k: torch.Tensor,
+        laplacian_k: torch.Tensor,
+        t: torch.Tensor,
+        K: Optional[int] = None
+) -> torch.Tensor:
+    """
+    Continuous simplicial convolution using matrix exponential: e^(-t*L) @ x
+
+    Implements the continuous filter from COSIMO paper:
+    h(t) = e^(-tL) x where L is the Hodge Laplacian
+
+    Args:
+        x_k: Features on k-simplices [num_simplices, features]
+        laplacian_k: Hodge Laplacian for k-simplices [num_simplices, num_simplices]
+        t: Continuous time parameter (scalar or learnable parameter)
+        K: Number of dominant eigenvectors to use (None = all)
+
+    Returns:
+        Filtered features [num_simplices, features]
+    """
+    if K is None or K >= laplacian_k.size(0):
+        # Full matrix exponential
+        exp_L = torch.matrix_exp(-t * laplacian_k)
+        return exp_L @ x_k
+    else:
+        # Efficient approximation using top-K eigenvectors
+        eigenvalues, eigenvectors = torch.linalg.eigh(laplacian_k)
+
+        # Take K largest eigenvalues (they're sorted ascending)
+        top_K_indices = torch.argsort(eigenvalues, descending=True)[:K]
+        V_K = eigenvectors[:, top_K_indices]  # [num_simplices, K]
+        lambda_K = eigenvalues[top_K_indices]  # [K]
+
+        # Compute e^(-t*λ) for top-K eigenvalues
+        exp_lambda = torch.exp(-t * lambda_K)  # [K]
+
+        # Reconstruct: V * diag(e^(-tλ)) * V^T * x
+        result = V_K @ (exp_lambda.unsqueeze(-1) * (V_K.T @ x_k))
+        return result
+
+
+class ContinuousConv(MessagePassing):
+    """
+    Continuous copresheaf morphism using Hodge-Laplacian dynamics.
+
+    Extends the discrete Conv class to use continuous diffusion instead of
+    discrete message passing. Maintains copresheaf structure while enabling
+    continuous receptive fields.
+
+    Mathematical Framework:
+    - Lower dynamics: e^(-t_d * L_k,d) @ x_k,d
+    - Upper dynamics: e^(-t_u * L_k,u) @ x_k,u
+    - Joint dynamics: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ x_k
+
+    Args:
+        in_dim: Input feature dimension
+        out_dim: Output feature dimension
+        t_d_init: Initial value for lower time parameter
+        t_u_init: Initial value for upper time parameter
+        learnable_t: Whether time parameters are learnable
+        K: Number of eigenvectors for approximation
+        edge_attr_dim: Optional edge attribute dimension
+        aggr: Aggregation method
+        bias: Whether to include bias
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            out_dim: int,
+            t_d_init: float = 0.1,
+            t_u_init: float = 0.1,
+            learnable_t: bool = True,
+            K: Optional[int] = None,
+            edge_attr_dim: int = 0,
+            aggr: str = "sum",
+            bias: bool = True,
+            **kwargs
+    ):
+        super().__init__(
+            in_dim=in_dim,
+            out_dim=out_dim,
+            edge_attr_dim=edge_attr_dim,
+            aggr=aggr,
+            copresheaf_map_factory=self._continuous_copresheaf_factory,
+            message_factory=self._continuous_message_factory,
+            update_factory=self._continuous_update_factory,
+            **kwargs
+        )
+
+        # Continuous time parameters (learnable by default)
+        if learnable_t:
+            self.t_d = nn.Parameter(torch.tensor(t_d_init))
+            self.t_u = nn.Parameter(torch.tensor(t_u_init))
+        else:
+            self.register_buffer('t_d', torch.tensor(t_d_init))
+            self.register_buffer('t_u', torch.tensor(t_u_init))
+
+        self.K = K  # Number of eigenvectors for approximation
+
+        # Projection layers for continuous features
+        self.proj_down = nn.Linear(in_dim, out_dim)
+        self.proj_up = nn.Linear(in_dim, out_dim)
+        self.proj_joint = nn.Linear(in_dim, out_dim)
+
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def _continuous_copresheaf_factory(self, in_dim: int, out_dim: int, edge_attr_dim: int):
+        """Factory for continuous copresheaf morphism."""
+        # Simpler than discrete version since continuous diffusion handles transport
+        return nn.Sequential(
+            nn.Linear(in_dim + edge_attr_dim, out_dim),
+            nn.Tanh()
+        )
+
+    def _continuous_message_factory(self, in_dim: int, out_dim: int):
+        """Factory for message combination."""
+        return nn.Sequential(
+            nn.Linear(out_dim + out_dim, out_dim),
+            nn.ReLU()
+        )
+
+    def _continuous_update_factory(self, in_dim: int, out_dim: int):
+        """Factory for final update."""
+        return nn.Sequential(
+            nn.Linear(out_dim + out_dim, out_dim),
+            nn.ReLU()
+        )
+
+    def reset_parameters(self):
+        """Initialize parameters."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def compute_hodge_laplacians(
+            self,
+            B_k: torch.Tensor,
+            B_k_plus_1: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Compute lower and upper Hodge Laplacians.
+
+        Args:
+            B_k: Boundary operator k [num_k-1_simplices, num_k_simplices]
+            B_k_plus_1: Boundary operator k+1 [num_k_simplices, num_k+1_simplices]
+
+        Returns:
+            (L_k_down, L_k_up) where:
+            - L_k_down = B_k^T @ B_k (lower Laplacian)
+            - L_k_up = B_k+1 @ B_k+1^T (upper Laplacian)
+        """
+        L_k_down = B_k.T @ B_k
+        L_k_up = B_k_plus_1 @ B_k_plus_1.T if B_k_plus_1 is not None else None
+        return L_k_down, L_k_up
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            edge_index: torch.Tensor,
+            B_k: torch.Tensor,
+            B_k_plus_1: Optional[torch.Tensor] = None,
+            edge_attr: Optional[torch.Tensor] = None,
+            size: Optional[Tuple[int, int]] = None
+    ) -> torch.Tensor:
+        """
+        Forward pass with continuous Hodge-Laplacian dynamics.
+
+        Args:
+            x: Node/simplex features [num_simplices, in_dim]
+            edge_index: Edge connectivity [2, num_edges]
+            B_k: Boundary operator for lower Laplacian
+            B_k_plus_1: Boundary operator for upper Laplacian (optional)
+            edge_attr: Edge attributes (optional)
+            size: Size tuple (optional)
+
+        Returns:
+            Updated features [num_simplices, out_dim]
+        """
+        # Compute Hodge Laplacians
+        L_k_down, L_k_up = self.compute_hodge_laplacians(B_k, B_k_plus_1)
+
+        # Apply continuous diffusion on lower space
+        x_down = continuous_simplicial_conv(x, L_k_down, self.t_d, self.K)
+        x_down = self.proj_down(x_down)
+
+        # Apply continuous diffusion on upper space (if exists)
+        if L_k_up is not None:
+            x_up = continuous_simplicial_conv(x, L_k_up, self.t_u, self.K)
+            x_up = self.proj_up(x_up)
+        else:
+            x_up = torch.zeros_like(x_down)
+
+        # Joint dynamics
+        x_joint = continuous_simplicial_conv(x, L_k_down, self.t_d, self.K)
+        if L_k_up is not None:
+            x_joint = x_joint + continuous_simplicial_conv(x, L_k_up, self.t_u, self.K)
+        x_joint = self.proj_joint(x_joint)
+
+        # Combine all components
+        out = x_down + x_up + x_joint
+
+        if self.bias is not None:
+            out = out + self.bias
+
+        return out
+
+    def check_oversmoothing_condition(self, laplacian: torch.Tensor) -> torch.Tensor:
+        """
+        Check over-smoothing condition from COSIMO Proposition 5.5:
+        t < ln(s) / (λ_min(L) + κ_f(L))
+
+        Args:
+            laplacian: Hodge Laplacian matrix
+
+        Returns:
+            Maximum allowed time parameter
+        """
+        eigenvalues = torch.linalg.eigvalsh(laplacian)
+        lambda_min = eigenvalues[eigenvalues > 1e-6].min()
+        lambda_max = eigenvalues.max()
+        kappa_f = lambda_max / lambda_min  # Condition number
+
+        # Assume s_norm from weight norms
+        s_norm = max(
+            torch.norm(self.proj_down.weight).item(),
+            torch.norm(self.proj_up.weight).item()
+        )
+
+        max_t = torch.log(torch.tensor(s_norm)) / (lambda_min + kappa_f)
+        return max_t
 #
 # class Conv(nn.Module):
 #     """

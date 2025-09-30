@@ -500,3 +500,286 @@ class CrossDimensionalSimplicialCopresheafNetwork(nn.Module):
 
         # Readout from vertices
         return self.readout(features[0])
+
+
+class ContinuousSimplicialModel(nn.Module):
+    """
+    Continuous Simplicial Neural Network based on COSIMO methodology.
+
+    Implements PDEs on simplicial complexes:
+    - Independent lower dynamics: ∂x_k,d/∂t_d = -L_k,d @ x_k,d
+    - Independent upper dynamics: ∂x_k,u/∂t_u = -L_k,u @ x_k,u
+    - Joint dynamics: combined diffusion across both spaces
+
+    Args:
+        in_dim: Input feature dimension
+        hidden_dim: Hidden layer dimension
+        out_dim: Output dimension
+        num_layers: Number of continuous layers
+        t_d_init: Initial lower time parameter
+        t_u_init: Initial upper time parameter
+        learnable_t: Whether time parameters are learnable
+        K: Number of eigenvectors for approximation (None = all)
+        num_branches: Number of parallel branches (Remark 4.2)
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            hidden_dim: int,
+            out_dim: int,
+            num_layers: int = 3,
+            t_d_init: float = 0.1,
+            t_u_init: float = 0.1,
+            learnable_t: bool = True,
+            K: Optional[int] = None,
+            num_branches: int = 1,
+            dropout: float = 0.1
+    ):
+        super().__init__()
+
+        self.num_branches = num_branches
+
+        # Initial encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_dim)
+        )
+
+        # Create multiple branches if specified (Remark 4.2)
+        self.branch_layers = nn.ModuleList()
+        for _ in range(num_branches):
+            branch = nn.ModuleList([
+                ContinuousCHOMPNNLayer(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    t_d_init=t_d_init,
+                    t_u_init=t_u_init,
+                    learnable_t=learnable_t,
+                    K=K
+                )
+                for _ in range(num_layers)
+            ])
+            self.branch_layers.append(branch)
+
+        # Branch aggregation if multiple branches
+        if num_branches > 1:
+            self.branch_aggregation = nn.Sequential(
+                nn.Linear(num_branches * hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            )
+        else:
+            self.branch_aggregation = None
+
+        # Layer norms for stability
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
+        ])
+
+        # Final readout
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout * 0.5),
+            nn.Linear(hidden_dim, out_dim)
+        )
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            boundary_operators: Dict[int, torch.Tensor],
+            batch: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: Node features [num_nodes, in_dim]
+            boundary_operators: Dict {k: B_k} of boundary operators
+            batch: Batch assignment for graph-level tasks
+
+        Returns:
+            Predictions [num_nodes or num_graphs, out_dim]
+        """
+        # Initial encoding
+        x = self.encoder(x)
+
+        # Compute projections for all dimensions
+        features_dict = self._compute_feature_projections(x, boundary_operators)
+
+        # Process through branches
+        branch_outputs = []
+        for branch_idx, branch in enumerate(self.branch_layers):
+            x_branch = x
+
+            for layer_idx, (layer, norm) in enumerate(zip(branch, self.layer_norms)):
+                # Continuous dynamics
+                x_new = layer(features_dict, boundary_operators)
+
+                # Residual connection + normalization
+                x_branch = norm(x_branch + x_new)
+
+                # Update features for next layer
+                features_dict = self._compute_feature_projections(
+                    x_branch, boundary_operators
+                )
+
+            branch_outputs.append(x_branch)
+
+        # Aggregate branches
+        if self.branch_aggregation is not None:
+            x = self.branch_aggregation(torch.cat(branch_outputs, dim=-1))
+        else:
+            x = branch_outputs[0]
+
+        # Graph-level pooling if needed
+        if batch is not None:
+            x = scatter(x, batch, dim=0, reduce='mean')
+
+        # Final readout
+        return self.readout(x)
+
+    def _compute_feature_projections(
+            self,
+            x: torch.Tensor,
+            boundary_operators: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
+        """Compute lower/upper projections for each dimension."""
+        features = {0: x}  # Start with 0-simplices (nodes)
+
+        # Lower projections (from k-1 to k)
+        for k in sorted(boundary_operators.keys()):
+            if k > 0 and (k - 1) in features:
+                B_k = boundary_operators[k]
+                features[k] = B_k.T @ features[k - 1]
+
+        return features
+
+    def get_time_constants(self) -> Dict[str, List[float]]:
+        """Get current time parameters from all layers."""
+        time_constants = {'t_d': [], 't_u': []}
+
+        for branch in self.branch_layers:
+            for layer in branch:
+                if hasattr(layer, 't_d'):
+                    time_constants['t_d'].append(layer.t_d.item())
+                    time_constants['t_u'].append(layer.t_u.item())
+
+        return time_constants
+
+
+class AdaptiveContinuousSimplicialModel(nn.Module):
+    """
+    Adaptive version with learnable time parameters per neighborhood.
+
+    This implements multi-resolution continuous filtering where different
+    topological relations (adjacency, incidence, coboundary) can have
+    different diffusion rates.
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            hidden_dim: int,
+            out_dim: int,
+            num_layers: int = 3,
+            num_neighborhoods: int = 3,
+            t_init: float = 0.1,
+            K: Optional[int] = None,
+            dropout: float = 0.1
+    ):
+        super().__init__()
+
+        self.num_neighborhoods = num_neighborhoods
+
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_dim)
+        )
+
+        # Layers with per-neighborhood continuous dynamics
+        self.layers = nn.ModuleList([
+            nn.ModuleDict({
+                f'neighborhood_{k}': ContinuousConv(
+                    in_dim=hidden_dim,
+                    out_dim=hidden_dim,
+                    t_d_init=t_init,
+                    t_u_init=t_init,
+                    learnable_t=True,
+                    K=K
+                )
+                for k in range(num_neighborhoods)
+            })
+            for _ in range(num_layers)
+        ])
+
+        # Neighborhood combination
+        self.combiners = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(num_neighborhoods * hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.LayerNorm(hidden_dim)
+            )
+            for _ in range(num_layers)
+        ])
+
+        self.dropout = nn.Dropout(dropout)
+
+        # Readout
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, out_dim)
+        )
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            edge_index_list: List[torch.Tensor],
+            boundary_operators_list: List[Dict[int, torch.Tensor]],
+            batch: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: Node features
+            edge_index_list: List of edge indices per neighborhood
+            boundary_operators_list: List of boundary operator dicts
+            batch: Batch assignment
+        """
+        x = self.encoder(x)
+
+        for layer_dict, combiner in zip(self.layers, self.combiners):
+            neighborhood_outputs = []
+
+            for k in range(self.num_neighborhoods):
+                conv = layer_dict[f'neighborhood_{k}']
+                edge_index = edge_index_list[k]
+                B_dict = boundary_operators_list[k]
+
+                # Apply continuous convolution
+                x_k = conv(
+                    x=x,
+                    edge_index=edge_index,
+                    B_k=B_dict.get(1),
+                    B_k_plus_1=B_dict.get(2)
+                )
+                neighborhood_outputs.append(x_k)
+
+            # Combine neighborhoods
+            x_combined = torch.cat(neighborhood_outputs, dim=-1)
+            x_new = combiner(x_combined)
+
+            # Residual connection
+            x = x + self.dropout(x_new)
+
+        # Pooling if graph-level
+        if batch is not None:
+            x = scatter(x, batch, dim=0, reduce='mean')
+
+        return self.readout(x)
