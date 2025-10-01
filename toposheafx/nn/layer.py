@@ -42,13 +42,15 @@ Core architecture classes for CMPNN and CHOMPNN models using Copresheaf-based me
 These implementations follow the mathematical framework from "Copresheaf Topological Neural Networks"
 by Hajij et al., specifically implementing Propositions 1 and 3.
 """
+from typing import Optional, Dict
+import numpy as np
 
 import torch
 from torch import nn
 from torch_geometric.utils import scatter
 from torch_geometric.utils import softmax as segment_softmax
 
-from toposheafx.base.conv import Conv, HigherOrderConv
+from toposheafx.base.conv import Conv, HigherOrderConv, continuous_simplicial_conv
 from toposheafx.base.message_passing import HigherOrderMessagePassing, CrossDimensionalMessagePassing
 from toposheafx.utils.guards import _check_index, _same_device
 from toposheafx.data.simplicial import SimplicialFeatures
@@ -460,111 +462,458 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
 
 # Continuous Hodge Laplacians for Copresheaves working with
 # restriction maps between different levels of a simplicial complex
-class ContinuousCopresheafLayer:
-    def __init__(self, k_simplex_dim, t_d, t_u):
-        self.t_d = nn.Parameter(torch.tensor(t_d))  # Learnable time params
-        self.t_u = nn.Parameter(torch.tensor(t_u))
-        self.L_k_down = None  # Lower Hodge Laplacian
-        self.L_k_up = None  # Upper Hodge Laplacian
+# class ContinuousCopresheafLayer:
+#     def __init__(self, k_simplex_dim, t_d, t_u):
+#         self.t_d = nn.Parameter(torch.tensor(t_d))  # Learnable time params
+#         self.t_u = nn.Parameter(torch.tensor(t_u))
+#         self.L_k_down = None  # Lower Hodge Laplacian
+#         self.L_k_up = None  # Upper Hodge Laplacian
+#
+#     def forward(self, X_k, X_k_down, X_k_up, B_k, B_k_plus_1):
+#         # Compute Hodge Laplacians
+#         self.L_k_down = B_k.T @ B_k
+#         self.L_k_up = B_k_plus_1 @ B_k_plus_1.T
+#
+#         # Continuous diffusion (COSIMO-style)
+#         # Use matrix exponential: e^(-t*L)
+#         diff_down = torch.matrix_exp(-self.t_d * self.L_k_down) @ X_k_down
+#         diff_up = torch.matrix_exp(-self.t_u * self.L_k_up) @ X_k_up
+#         diff_joint = (torch.matrix_exp(-self.t_d * self.L_k_down) +
+#                       torch.matrix_exp(-self.t_u * self.L_k_up)) @ X_k
+#
+#         return diff_down, diff_joint, diff_up
 
-    def forward(self, X_k, X_k_down, X_k_up, B_k, B_k_plus_1):
-        # Compute Hodge Laplacians
-        self.L_k_down = B_k.T @ B_k
-        self.L_k_up = B_k_plus_1 @ B_k_plus_1.T
 
-        # Continuous diffusion (COSIMO-style)
-        # Use matrix exponential: e^(-t*L)
-        diff_down = torch.matrix_exp(-self.t_d * self.L_k_down) @ X_k_down
-        diff_up = torch.matrix_exp(-self.t_u * self.L_k_up) @ X_k_up
-        diff_joint = (torch.matrix_exp(-self.t_d * self.L_k_down) +
-                      torch.matrix_exp(-self.t_u * self.L_k_up)) @ X_k
-
-        return diff_down, diff_joint, diff_up
-
+#
+#    !! Improperly handles boundary operator for 0 cells
+#    !! Improperly handles transport maps fro copresheafs
+#
+# class ContinuousCopresheafLayer(nn.Module):
+#     """
+#     Continuous copresheaf layer integrating COSIMO methodology with copresheaf theory.
+#
+#     This layer combines:
+#     1. Copresheaf morphisms (restriction maps between stalks)
+#     2. Continuous Hodge-Laplacian dynamics (COSIMO approach)
+#     3. Multi-scale information flow (lower/upper/joint dynamics)
+#
+#     Mathematical Framework:
+#     For each k-simplex x with neighborhoods:
+#     - Lower: (k-1)-simplices → k-simplices (faces)
+#     - Upper: (k+1)-simplices → k-simplices (cofaces)
+#
+#     Dynamics:
+#     - Independent diffusion: e^(-t_d * L_k,d) @ x_k,d and e^(-t_u * L_k,u) @ x_k,u
+#     - Joint diffusion: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ x_k
+#     - Final: x_k' = φ(x_k,d' + x_k' + x_k,u')
+#
+#     Args:
+#         in_dim: Input feature dimension
+#         out_dim: Output feature dimension
+#         k_simplex_dim: Dimension of simplices (0=nodes, 1=edges, 2=triangles)
+#         t_d_init: Initial lower time parameter
+#         t_u_init: Initial upper time parameter
+#         learnable_t: Whether time parameters are learnable
+#         K: Number of eigenvectors for approximation
+#         combine_method: How to combine dynamics ('sum', 'concat', 'attention')
+#     """
+#
+#     def __init__(
+#             self,
+#             in_dim: int,
+#             out_dim: int,
+#             k_simplex_dim: int = 1,
+#             t_d_init: float = 0.1,
+#             t_u_init: float = 0.1,
+#             learnable_t: bool = True,
+#             K: Optional[int] = None,
+#             combine_method: str = 'sum'
+#     ):
+#         super().__init__()
+#
+#         self.in_dim = in_dim
+#         self.out_dim = out_dim
+#         self.k_simplex_dim = k_simplex_dim
+#         self.K = K
+#         self.combine_method = combine_method
+#
+#         # Learnable time parameters
+#         if learnable_t:
+#             self.t_d = nn.Parameter(torch.tensor(t_d_init, dtype=torch.float32))
+#             self.t_u = nn.Parameter(torch.tensor(t_u_init, dtype=torch.float32))
+#         else:
+#             self.register_buffer('t_d', torch.tensor(t_d_init, dtype=torch.float32))
+#             self.register_buffer('t_u', torch.tensor(t_u_init, dtype=torch.float32))
+#
+#         # Projection layers for each dynamics component
+#         self.proj_down = nn.Linear(in_dim, out_dim)
+#         self.proj_up = nn.Linear(in_dim, out_dim)
+#         self.proj_joint = nn.Linear(in_dim, out_dim)
+#
+#         # Combination layer
+#         if combine_method == 'concat':
+#             self.combine = nn.Sequential(
+#                 nn.Linear(3 * out_dim, out_dim),
+#                 nn.ReLU()
+#             )
+#         elif combine_method == 'attention':
+#             self.attention = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
+#         elif combine_method == 'sum':
+#             self.combine = None
+#         else:
+#             raise ValueError(f"Unknown combine_method: {combine_method}")
+#
+#         # Final update function (copresheaf Beta operator)
+#         self.update_fn = nn.Sequential(
+#             nn.Linear(in_dim + out_dim, out_dim),
+#             nn.ReLU(),
+#             nn.Linear(out_dim, out_dim)
+#         )
+#
+#         self.reset_parameters()
+#
+#     def reset_parameters(self):
+#         """Initialize parameters."""
+#         for module in self.modules():
+#             if isinstance(module, nn.Linear):
+#                 nn.init.xavier_uniform_(module.weight)
+#                 if module.bias is not None:
+#                     nn.init.zeros_(module.bias)
+#
+#         """Initialize all learnable parameters."""
+#         # Initialize projection layers
+#         nn.init.xavier_uniform_(self.proj_down.weight)
+#         nn.init.zeros_(self.proj_down.bias)
+#
+#         nn.init.xavier_uniform_(self.proj_up.weight)
+#         nn.init.zeros_(self.proj_up.bias)
+#
+#         nn.init.xavier_uniform_(self.proj_joint.weight)
+#         nn.init.zeros_(self.proj_joint.bias)
+#
+#         # Initialize combination layer if it exists
+#         if self.combine is not None:
+#             for module in self.combine.modules():
+#                 if isinstance(module, nn.Linear):
+#                     nn.init.xavier_uniform_(module.weight)
+#                     if module.bias is not None:
+#                         nn.init.zeros_(module.bias)
+#
+#         # Initialize attention if used
+#         if hasattr(self, 'attention'):
+#             # MultiheadAttention initializes itself, but we can reset if needed
+#             pass
+#
+#         # Initialize update function
+#         for module in self.update_fn.modules():
+#             if isinstance(module, nn.Linear):
+#                 nn.init.xavier_uniform_(module.weight)
+#                 if module.bias is not None:
+#                     nn.init.zeros_(module.bias)
+#
+#         # Ensure time parameters are valid (should already be from __init__)
+#         if hasattr(self, 't_d') and (torch.isnan(self.t_d).any() or torch.isinf(self.t_d).any()):
+#             print(f"⚠️ WARNING: t_d is NaN/Inf in {self.__class__.__name__}. Resetting.")
+#             self.t_d.data = torch.tensor(0.1, dtype=torch.float32)
+#
+#         if hasattr(self, 't_u') and (torch.isnan(self.t_u).any() or torch.isinf(self.t_u).any()):
+#             print(f"⚠️ WARNING: t_u is NaN/Inf in {self.__class__.__name__}. Resetting.")
+#             self.t_u.data = torch.tensor(0.1, dtype=torch.float32)
+#
+#     def forward(
+#             self,
+#             X_k: torch.Tensor,
+#             X_k_down: torch.Tensor,
+#             X_k_up: torch.Tensor,
+#             B_k: torch.Tensor,
+#             B_k_plus_1: Optional[torch.Tensor] = None
+#     ) -> torch.Tensor:
+#         """
+#         Forward pass implementing continuous copresheaf dynamics.
+#
+#         Args:
+#             X_k: Features on k-simplices [num_k_simplices, in_dim]
+#             X_k_down: Features projected from (k-1)-simplices [num_k_simplices, in_dim]
+#             X_k_up: Features projected from (k+1)-simplices [num_k_simplices, in_dim]
+#             B_k: Boundary operator k [num_k-1_simplices, num_k_simplices]
+#             B_k_plus_1: Boundary operator k+1 (optional)
+#
+#         Returns:
+#             Updated features [num_k_simplices, out_dim]
+#         """
+#         # Compute Hodge Laplacians
+#         #  CHECK FOR NONE BEFORE COMPUTING LAPLACIANS
+#         if B_k is not None:
+#             L_k_down = B_k.T @ B_k
+#         else:
+#             # Dimension 0: no lower Laplacian, use identity
+#             L_k_down = torch.eye(X_k.size(0), device=X_k.device, dtype=X_k.dtype)
+#
+#         if B_k_plus_1 is not None:
+#             L_k_up = B_k_plus_1 @ B_k_plus_1.T
+#         else:
+#             # Top dimension: no upper Laplacian, use identity
+#             L_k_up = torch.eye(X_k.size(0), device=X_k.device, dtype=X_k.dtype)
+#
+#         # Independent lower dynamics: e^(-t_d * L_k,d) @ X_k,d
+#         if B_k is not None:
+#             diff_down = continuous_simplicial_conv(X_k_down, L_k_down, self.t_d, self.K)
+#             diff_down = self.proj_down(diff_down)
+#         else:
+#             # Dimension 0: no lower neighbors, use self-diffusion
+#             diff_down = continuous_simplicial_conv(X_k, L_k_down, self.t_d, self.K)
+#             diff_down = self.proj_down(diff_down)
+#
+#         # Independent upper dynamics
+#         if B_k_plus_1 is not None:
+#             diff_up = continuous_simplicial_conv(X_k_up, L_k_up, self.t_u, self.K)
+#             diff_up = self.proj_up(diff_up)
+#         else:
+#             # Top dimension: no upper neighbors
+#             diff_up = torch.zeros_like(diff_down)
+#
+#         # Joint dynamics: combines both spaces
+#         diff_joint = continuous_simplicial_conv(X_k, L_k_down, self.t_d, self.K)
+#         if B_k_plus_1 is not None:
+#             diff_joint = diff_joint + continuous_simplicial_conv(X_k, L_k_up, self.t_u, self.K)
+#         diff_joint = self.proj_joint(diff_joint)
+#
+#         # Combine dynamics components
+#         if self.combine_method == 'sum':
+#             combined = diff_down + diff_joint + diff_up
+#         elif self.combine_method == 'concat':
+#             combined = torch.cat([diff_down, diff_joint, diff_up], dim=-1)
+#             combined = self.combine(combined)
+#         elif self.combine_method == 'attention':
+#             stacked = torch.stack([diff_down, diff_joint, diff_up], dim=1)
+#             combined, _ = self.attention(stacked, stacked, stacked)
+#             combined = combined.mean(dim=1)
+#
+#         # Final update (Beta operator from copresheaf)
+#         if X_k.size(-1) == combined.size(-1):
+#             out = self.update_fn(torch.cat([X_k, combined], dim=-1))
+#         else:
+#             X_k_proj = nn.Linear(X_k.size(-1), combined.size(-1), device=X_k.device)(X_k)
+#             out = self.update_fn(torch.cat([X_k_proj, combined], dim=-1))
+#
+#         return out
+#
+#     def get_effective_time_constants(self) -> dict:
+#         """Return current time constants for monitoring."""
+#         return {
+#             't_d': self.t_d.item(),
+#             't_u': self.t_u.item()
+#         }
+#
+#     def clamp_time_parameters(self, min_val: float = 1e-6, max_val: float = 10.0):
+#         """
+#         Clamp time parameters to safe range.
+#
+#         This should be called after optimizer.step() to prevent:
+#         - Negative values
+#         - Values too close to zero (numerical instability)
+#         - Values too large (over-smoothing)
+#
+#         Args:
+#             min_val: Minimum allowed value (default: 1e-6)
+#             max_val: Maximum allowed value (default: 10.0)
+#         """
+#         with torch.no_grad():
+#             if hasattr(self, 't_d'):
+#                 self.t_d.data = self.t_d.data.clamp(min=min_val, max=max_val)
+#                 if torch.isnan(self.t_d).any():
+#                     self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+#
+#             if hasattr(self, 't_u'):
+#                 self.t_u.data = self.t_u.data.clamp(min=min_val, max=max_val)
+#                 if torch.isnan(self.t_u).any():
+#                     self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+#
 
 class ContinuousCopresheafLayer(nn.Module):
     """
-    Continuous copresheaf layer integrating COSIMO methodology with copresheaf theory.
+    Integrates copresheaf morphisms with continuous Hodge-Laplacian dynamics.
 
-    This layer combines:
-    1. Copresheaf morphisms (restriction maps between stalks)
-    2. Continuous Hodge-Laplacian dynamics (COSIMO approach)
-    3. Multi-scale information flow (lower/upper/joint dynamics)
+    Combines:
+    1. Copresheaf transport maps ρ_y→x: F(y) → F(x) (Proposition 1)
+    2. COSIMO continuous dynamics (Proposition 4.1, Equation 10)
 
-    Mathematical Framework:
-    For each k-simplex x with neighborhoods:
-    - Lower: (k-1)-simplices → k-simplices (faces)
-    - Upper: (k+1)-simplices → k-simplices (cofaces)
-
-    Dynamics:
-    - Independent diffusion: e^(-t_d * L_k,d) @ x_k,d and e^(-t_u * L_k,u) @ x_k,u
-    - Joint diffusion: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ x_k
-    - Final: x_k' = φ(x_k,d' + x_k' + x_k,u')
-
-    Args:
-        in_dim: Input feature dimension
-        out_dim: Output feature dimension
-        k_simplex_dim: Dimension of simplices (0=nodes, 1=edges, 2=triangles)
-        t_d_init: Initial lower time parameter
-        t_u_init: Initial upper time parameter
-        learnable_t: Whether time parameters are learnable
-        K: Number of eigenvectors for approximation
-        combine_method: How to combine dynamics ('sum', 'concat', 'attention')
+    Architecture per layer:
+        1. Apply ρ morphisms to transported features
+        2. Compute continuous diffusion via Hodge Laplacians
+        3. Message function α combines current + transported
+        4. Update function β produces new representations
+        5. Copresheaf morphisms ρ (transport maps)
+        6. Learnable Θ projections (COSIMO Eq. 10)
+        7. Learnable Ψ projections (COSIMO Eq. 10)
+        8. Message function α (copresheaf paper)
+    -
+    Mathematically:
+        1. Apply copresheaf morphisms first: ρ_down_input and X_k_down_transported
+        2. Compute Laplacians: L_k_down = B_k.T @ B_k
+        3. Apply continuous diffusion to transported features: lower_diffusion = e^(-t_d * L_k_down) @ X_k_down_transported
+        4. Project features Use Θ and Ψ projections (COSIMO Eq. 10):
+            a. lower_features = Θ_down(lower_diffusion)
+            b. joint_features = Ψ_down(joint_diffusion)
+        5. Combine: sum or concat or attention
+        6. Message function α: messages = α(X_k, combined_features)
+        7. Update: β(X_k, combined)
     """
 
     def __init__(
             self,
             in_dim: int,
             out_dim: int,
-            k_simplex_dim: int = 1,
+            k_simplex_dim: int,
             t_d_init: float = 0.1,
             t_u_init: float = 0.1,
             learnable_t: bool = True,
             K: Optional[int] = None,
-            combine_method: str = 'sum'
+            use_morphisms: bool = True
     ):
         super().__init__()
 
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.k_simplex_dim = k_simplex_dim
+        self.use_morphisms = use_morphisms
         self.K = K
-        self.combine_method = combine_method
 
-        # Learnable time parameters
-        if learnable_t:
-            self.t_d = nn.Parameter(torch.tensor(t_d_init))
-            self.t_u = nn.Parameter(torch.tensor(t_u_init))
-        else:
-            self.register_buffer('t_d', torch.tensor(t_d_init))
-            self.register_buffer('t_u', torch.tensor(t_u_init))
+        # COSIMO time parameters
+        self._create_time_parameters(t_d_init, t_u_init, learnable_t)
 
-        # Projection layers for each dynamics component
-        self.proj_down = nn.Linear(in_dim, out_dim)
-        self.proj_up = nn.Linear(in_dim, out_dim)
-        self.proj_joint = nn.Linear(in_dim, out_dim)
-
-        # Combination layer
-        if combine_method == 'concat':
-            self.combine = nn.Sequential(
-                nn.Linear(3 * out_dim, out_dim),
-                nn.ReLU()
+        # COPRESHEAF MORPHISMS (Proposition 1)
+        if use_morphisms:
+            # ρ_down: Transport from (k-1)-simplices to k-simplices
+            self.rho_down = nn.Sequential(
+                nn.Linear(2 * in_dim, out_dim),  # [h_k, h_{k-1}]
+                nn.Tanh()  # Smooth transport
             )
-        elif combine_method == 'attention':
-            self.attention = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
-        elif combine_method == 'sum':
-            self.combine = None
-        else:
-            raise ValueError(f"Unknown combine_method: {combine_method}")
 
-        # Final update function (copresheaf Beta operator)
+            # ρ_up: Transport from (k+1)-simplices to k-simplices
+            self.rho_up = nn.Sequential(
+                nn.Linear(2 * in_dim, out_dim),  # [h_k, h_{k+1}]
+                nn.Tanh()
+            )
+
+        # COSIMO projections (Equation 10: Θ and Ψ)
+        self.theta_down = nn.Linear(in_dim, out_dim)  # Θ^l_{k,d}
+        self.theta_up = nn.Linear(in_dim, out_dim)  # Θ^l_{k,u}
+        self.psi_down = nn.Linear(in_dim, out_dim)  # Ψ^l_{k,d}
+        self.psi_up = nn.Linear(in_dim, out_dim)  # Ψ^l_{k,u}
+
+        # MESSAGE AND UPDATE FUNCTIONS (Copresheaf α and β)
+        self.message_fn = nn.Sequential(
+            nn.Linear(out_dim + out_dim, out_dim),  # [h_k, aggregated_messages]
+            nn.ReLU()
+        )
+
         self.update_fn = nn.Sequential(
-            nn.Linear(in_dim + out_dim, out_dim),
+            nn.Linear(out_dim + out_dim, out_dim),  # [h_k, combined_features]
             nn.ReLU(),
-            nn.Linear(out_dim, out_dim)
+            nn.LayerNorm(out_dim)
         )
 
         self.reset_parameters()
+
+    def _create_time_parameters(self, t_d_init, t_u_init, learnable_t):
+        """Create time parameters with validation."""
+        if learnable_t:
+            self.t_d = nn.Parameter(torch.tensor(t_d_init, dtype=torch.float32))
+            self.t_u = nn.Parameter(torch.tensor(t_u_init, dtype=torch.float32))
+        else:
+            self.register_buffer('t_d', torch.tensor(t_d_init, dtype=torch.float32))
+            self.register_buffer('t_u', torch.tensor(t_u_init, dtype=torch.float32))
+
+    def forward(
+            self,
+            X_k: torch.Tensor,
+            X_k_down: torch.Tensor,
+            X_k_up: torch.Tensor,
+            B_k: Optional[torch.Tensor] = None,
+            B_k_plus_1: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Forward pass combining copresheaf morphisms with continuous dynamics.
+
+        Process:
+        1. Apply copresheaf morphisms ρ to transported features
+        2. Compute continuous diffusion using Hodge Laplacians
+        3. Combine via message function α
+        4. Update via β
+        """
+
+        # STEP 1: COPRESHEAF MORPHISMS
+        if self.use_morphisms and B_k is not None:
+            # Transport features with context-dependent morphisms
+            # ρ_down(h_k, h_{k-1}): considers target context
+            rho_down_input = torch.cat([X_k, X_k_down], dim=-1)
+            X_k_down_transported = self.rho_down(rho_down_input)
+        else:
+            X_k_down_transported = X_k_down
+
+        if self.use_morphisms and B_k_plus_1 is not None:
+            rho_up_input = torch.cat([X_k, X_k_up], dim=-1)
+            X_k_up_transported = self.rho_up(rho_up_input)
+        else:
+            X_k_up_transported = X_k_up
+
+        # STEP 2: COMPUTE HODGE LAPLACIANS (Handle None case)
+        if B_k is not None:
+            L_k_down = B_k.T @ B_k
+        else:
+            L_k_down = torch.eye(X_k.size(0), device=X_k.device, dtype=X_k.dtype)
+
+        if B_k_plus_1 is not None:
+            L_k_up = B_k_plus_1 @ B_k_plus_1.T
+        else:
+            L_k_up = torch.eye(X_k.size(0), device=X_k.device, dtype=X_k.dtype)
+
+        # STEP 3: CONTINUOUS DYNAMICS (COSIMO Equation 10)
+        # X^l_k = σ(e^{-t_d L_{k,d}} X^{l-1}_{k,d} Θ^l_{k,d} +
+        #          e^{-t_u L_{k,u}} X^{l-1}_{k,u} Θ^l_{k,u} +
+        #          e^{-t_d L_{k,d}} X^{l-1}_k Ψ^l_{k,d} +
+        #          e^{-t_u L_{k,u}} X^{l-1}_k Ψ^l_{k,u})
+
+        # Independent lower dynamics
+        if B_k is not None:
+            lower_diffusion = continuous_simplicial_conv(X_k_down_transported, L_k_down, self.t_d, self.K)
+            lower_features = self.theta_down(lower_diffusion)
+        else:
+            lower_features = torch.zeros(X_k.size(0), self.out_dim, device=X_k.device)
+
+        # Independent upper dynamics
+        if B_k_plus_1 is not None:
+            upper_diffusion = continuous_simplicial_conv(X_k_up_transported, L_k_up, self.t_u, self.K)
+            upper_features = self.theta_up(upper_diffusion)
+        else:
+            upper_features = torch.zeros(X_k.size(0), self.out_dim, device=X_k.device)
+
+        # Joint dynamics on current features
+        joint_lower = continuous_simplicial_conv(X_k, L_k_down, self.t_d, self.K)
+        joint_lower_features = self.psi_down(joint_lower)
+
+        joint_upper = continuous_simplicial_conv(X_k, L_k_up, self.t_u, self.K)
+        joint_upper_features = self.psi_up(joint_upper)
+
+        # Combine all components
+        combined = lower_features + upper_features + joint_lower_features + joint_upper_features
+
+        # STEP 4: MESSAGE FUNCTION (α)
+        # Combines current state with aggregated diffused features
+        messages = self.message_fn(torch.cat([X_k, combined], dim=-1))
+
+        # STEP 5: UPDATE FUNCTION (β)
+        # Final update with residual connection
+        output = self.update_fn(torch.cat([X_k, messages], dim=-1))
+
+        return output
+
+    def clamp_time_parameters(self, min_val=1e-4, max_val=10.0):
+        """Clamp time parameters to valid range."""
+        if isinstance(self.t_d, nn.Parameter):
+            self.t_d.data = torch.clamp(self.t_d.data, min_val, max_val)
+            self.t_u.data = torch.clamp(self.t_u.data, min_val, max_val)
 
     def reset_parameters(self):
         """Initialize parameters."""
@@ -573,78 +922,6 @@ class ContinuousCopresheafLayer(nn.Module):
                 nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
-
-    def forward(
-            self,
-            X_k: torch.Tensor,
-            X_k_down: torch.Tensor,
-            X_k_up: torch.Tensor,
-            B_k: torch.Tensor,
-            B_k_plus_1: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Forward pass implementing continuous copresheaf dynamics.
-
-        Args:
-            X_k: Features on k-simplices [num_k_simplices, in_dim]
-            X_k_down: Features projected from (k-1)-simplices [num_k_simplices, in_dim]
-            X_k_up: Features projected from (k+1)-simplices [num_k_simplices, in_dim]
-            B_k: Boundary operator k [num_k-1_simplices, num_k_simplices]
-            B_k_plus_1: Boundary operator k+1 (optional)
-
-        Returns:
-            Updated features [num_k_simplices, out_dim]
-        """
-        # Compute Hodge Laplacians
-        L_k_down = B_k.T @ B_k
-        L_k_up = B_k_plus_1 @ B_k_plus_1.T if B_k_plus_1 is not None else None
-
-        # Independent lower dynamics: e^(-t_d * L_k,d) @ X_k,d
-        diff_down = continuous_simplicial_conv(X_k_down, L_k_down, self.t_d, self.K)
-        diff_down = self.proj_down(diff_down)
-
-        # Independent upper dynamics: e^(-t_u * L_k,u) @ X_k,u
-        if L_k_up is not None:
-            diff_up = continuous_simplicial_conv(X_k_up, L_k_up, self.t_u, self.K)
-            diff_up = self.proj_up(diff_up)
-        else:
-            diff_up = torch.zeros_like(diff_down)
-
-        # Joint dynamics: (e^(-t_d * L_k,d) + e^(-t_u * L_k,u)) @ X_k
-        diff_joint = continuous_simplicial_conv(X_k, L_k_down, self.t_d, self.K)
-        if L_k_up is not None:
-            diff_joint = diff_joint + continuous_simplicial_conv(X_k, L_k_up, self.t_u, self.K)
-        diff_joint = self.proj_joint(diff_joint)
-
-        # Combine dynamics components
-        if self.combine_method == 'sum':
-            combined = diff_down + diff_joint + diff_up
-        elif self.combine_method == 'concat':
-            combined = torch.cat([diff_down, diff_joint, diff_up], dim=-1)
-            combined = self.combine(combined)
-        elif self.combine_method == 'attention':
-            # Stack as sequence: [batch, 3, out_dim]
-            stacked = torch.stack([diff_down, diff_joint, diff_up], dim=1)
-            combined, _ = self.attention(stacked, stacked, stacked)
-            combined = combined.mean(dim=1)  # Average over sequence
-
-        # Final update with residual connection (copresheaf Beta operator)
-        if X_k.size(-1) == combined.size(-1):
-            out = self.update_fn(torch.cat([X_k, combined], dim=-1))
-        else:
-            # If dimensions don't match, project X_k first
-            X_k_proj = nn.Linear(X_k.size(-1), combined.size(-1), device=X_k.device)(X_k)
-            out = self.update_fn(torch.cat([X_k_proj, combined], dim=-1))
-
-        return out
-
-    def get_effective_time_constants(self) -> dict:
-        """Return current time constants for monitoring."""
-        return {
-            't_d': self.t_d.item(),
-            't_u': self.t_u.item()
-        }
-
 
 class ContinuousCHOMPNNLayer(nn.Module):
     """
@@ -669,7 +946,19 @@ class ContinuousCHOMPNNLayer(nn.Module):
     ):
         super().__init__()
 
+        self.in_dim = in_dim
+        self.out_dim = out_dim
         self.num_neighborhoods = num_neighborhoods
+        self.K = K
+        self.combine_method = combine_method
+
+        # Store initialization values for potential reset
+        self._t_d_init = t_d_init
+        self._t_u_init = t_u_init
+        self._learnable_t = learnable_t
+
+        # Create time parameters with explicit dtype and validation
+        self._create_time_parameters(t_d_init, t_u_init, learnable_t)
 
         # One continuous copresheaf layer per neighborhood
         self.neighborhood_layers = nn.ModuleList([
@@ -694,48 +983,276 @@ class ContinuousCHOMPNNLayer(nn.Module):
             )
         elif combine_method == 'sum':
             self.combine = None
+        elif combine_method == 'attention':
+            self.combine = nn.MultiheadAttention(
+                embed_dim=out_dim,
+                num_heads=4,
+                batch_first=True
+            )
+        else:
+            raise ValueError(f"Unknown combine_method: {combine_method}. Must be 'concat', 'sum', or 'attention'")
 
-        self.combine_method = combine_method
+        # Initialize all parameters at the end
+        self.reset_parameters()
+
+    def _create_time_parameters(self, t_d_init: float, t_u_init: float, learnable_t: bool):
+        """
+        Safely create time parameters with validation.
+
+        This method ensures:
+        1. Explicit float32 dtype
+        2. Values are not NaN or Inf
+        3. Values are positive
+        4. Proper parameter/buffer registration
+        """
+        # Validate input values
+        if not isinstance(t_d_init, (int, float)) or np.isnan(t_d_init) or np.isinf(t_d_init):
+            print(f"⚠️ WARNING: Invalid t_d_init={t_d_init}, using default 0.1")
+            t_d_init = 0.1
+
+        if not isinstance(t_u_init, (int, float)) or np.isnan(t_u_init) or np.isinf(t_u_init):
+            print(f"⚠️ WARNING: Invalid t_u_init={t_u_init}, using default 0.1")
+            t_u_init = 0.1
+
+        # Ensure positive values
+        t_d_init = max(float(t_d_init), 1e-6)
+        t_u_init = max(float(t_u_init), 1e-6)
+
+        # Create parameters with explicit dtype
+        if learnable_t:
+            self.t_d = nn.Parameter(
+                torch.tensor(t_d_init, dtype=torch.float32),
+                requires_grad=True
+            )
+            self.t_u = nn.Parameter(
+                torch.tensor(t_u_init, dtype=torch.float32),
+                requires_grad=True
+            )
+        else:
+            # Use buffers for non-learnable parameters
+            self.register_buffer(
+                't_d',
+                torch.tensor(t_d_init, dtype=torch.float32)
+            )
+            self.register_buffer(
+                't_u',
+                torch.tensor(t_u_init, dtype=torch.float32)
+            )
+
+        # Immediate validation
+        self._validate_time_parameters()
+
+    def _validate_time_parameters(self):
+        """
+        Validate time parameters and fix if necessary.
+
+        This catches issues from:
+        - Improper initialization
+        - Gradient updates that produce NaN
+        - Numerical instability
+        """
+        if hasattr(self, 't_d'):
+            if torch.isnan(self.t_d).any():
+                print(f"⚠️ CRITICAL: t_d is NaN in {self.__class__.__name__}! Resetting to {self._t_d_init}")
+                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+            elif torch.isinf(self.t_d).any():
+                print(f"⚠️ CRITICAL: t_d is Inf in {self.__class__.__name__}! Resetting to {self._t_d_init}")
+                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+            elif self.t_d.item() <= 0:
+                print(f"⚠️ WARNING: t_d is non-positive ({self.t_d.item()})! Resetting to {self._t_d_init}")
+                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+
+        if hasattr(self, 't_u'):
+            if torch.isnan(self.t_u).any():
+                print(f"⚠️ CRITICAL: t_u is NaN in {self.__class__.__name__}! Resetting to {self._t_u_init}")
+                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+            elif torch.isinf(self.t_u).any():
+                print(f"⚠️ CRITICAL: t_u is Inf in {self.__class__.__name__}! Resetting to {self._t_u_init}")
+                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+            elif self.t_u.item() <= 0:
+                print(f"⚠️ WARNING: t_u is non-positive ({self.t_u.item()})! Resetting to {self._t_u_init}")
+                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+
+    def reset_parameters(self):
+        """
+        Initialize all learnable parameters.
+
+        Initialization strategy:
+        1. Time parameters: Already initialized in _create_time_parameters()
+        2. Neighborhood layers: Recursively call their reset_parameters()
+        3. Combination layers: Xavier uniform for weights, zeros for biases
+
+        This ensures a consistent initialization across the entire layer.
+        """
+        # Reset neighborhood layers (will initialize their time parameters)
+        for layer in self.neighborhood_layers:
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+
+        # Initialize combination layers
+        if self.combine is not None:
+            if self.combine_method == 'concat':
+                # Sequential with Linear layers
+                for module in self.combine.modules():
+                    if isinstance(module, nn.Linear):
+                        nn.init.xavier_uniform_(module.weight)
+                        if module.bias is not None:
+                            nn.init.zeros_(module.bias)
+
+            elif self.combine_method == 'attention':
+                # MultiheadAttention initializes itself properly
+                # But we can ensure it's reset if needed
+                if hasattr(self.combine, '_reset_parameters'):
+                    self.combine._reset_parameters()
+
+        # Final validation of time parameters
+        self._validate_time_parameters()
 
     def forward(
             self,
-            features_dict: dict,  # {0: X_0, 1: X_1, 2: X_2, ...}
-            boundary_operators: dict  # {1: B_1, 2: B_2, ...}
-    ) -> dict:
+            features_dict: Dict[int, torch.Tensor],
+            boundary_operators: Dict[int, torch.Tensor]
+    ) -> torch.Tensor:
         """
         Forward pass across multiple simplex dimensions.
 
         Args:
-            features_dict: Features per simplex dimension
-            boundary_operators: Boundary operators per dimension
+            features_dict: {0: X_0, 1: X_1, 2: X_2, ...} features per dimension
+            boundary_operators: {1: B_1, 2: B_2, ...} boundary operators
 
         Returns:
-            Updated features per dimension
+            Updated features for dimension 0 (vertices)
         """
-        outputs = {}
-        all_updates = []
+        # ✅ Pre-forward validation to catch NaN early
+        if self.training:
+            self._validate_time_parameters()
 
-        for k in range(self.num_neighborhoods):
+        # Process each neighborhood and collect dimension 0 outputs
+        vertex_outputs = []
+
+        for k, layer in enumerate(self.neighborhood_layers):
             if k not in features_dict:
                 continue
 
             X_k = features_dict[k]
-            X_k_down = boundary_operators[k].T @ features_dict.get(k - 1, torch.zeros_like(
-                X_k)) if k > 0 else torch.zeros_like(X_k)
-            X_k_up = boundary_operators.get(k + 1, torch.zeros(X_k.size(0), X_k.size(0),
-                                                               device=X_k.device)) @ features_dict.get(k + 1,
-                                                                                                       torch.zeros_like(
-                                                                                                           X_k))
 
-            B_k = boundary_operators.get(k, None)
-            B_k_plus_1 = boundary_operators.get(k + 1, None)
+            # Get features from neighboring dimensions
+            X_k_down = features_dict.get(k - 1, torch.zeros_like(X_k)) if k > 0 else torch.zeros_like(X_k)
+            X_k_up = features_dict.get(k + 1, torch.zeros_like(X_k))
 
-            if B_k is not None:
-                updated = self.neighborhood_layers[k](X_k, X_k_down, X_k_up, B_k, B_k_plus_1)
-                outputs[k] = updated
-                all_updates.append(updated)
+            # Get boundary operators
+            B_k = boundary_operators.get(k)
+            B_k_plus_1 = boundary_operators.get(k + 1)
 
-        return outputs
+            if B_k is None:
+                continue
+
+            try:
+                # Apply continuous copresheaf layer
+                output = layer(X_k, X_k_down, X_k_up, B_k, B_k_plus_1)
+
+                # Check for NaN
+                if torch.isnan(output).any():
+                    print(f"⚠️ WARNING: NaN detected in neighborhood {k} output!")
+                    output = X_k
+
+                # ✅ Project to vertex space (dimension 0)
+                if k == 0:
+                    # Already in vertex space
+                    vertex_outputs.append(output)
+                elif k == 1 and B_k is not None:
+                    # Project edges to vertices: B_1^T @ output
+                    vertex_proj = B_k.T @ output
+                    vertex_outputs.append(vertex_proj)
+                elif k == 2 and k in boundary_operators and (k - 1) in boundary_operators:
+                    # Project triangles to edges to vertices: B_1^T @ B_2^T @ output
+                    B_2 = boundary_operators[k]
+                    B_1 = boundary_operators[k - 1]
+                    edge_proj = B_2.T @ output
+                    vertex_proj = B_1.T @ edge_proj
+                    vertex_outputs.append(vertex_proj)
+                else:
+                    # Skip this dimension if we can't project
+                    continue
+
+            except RuntimeError as e:
+                print(f"⚠️ ERROR in neighborhood {k}: {e}")
+                continue
+
+        if not vertex_outputs:
+            # Return zeros if no valid outputs
+            return torch.zeros_like(features_dict[0])
+
+        # Combine outputs in vertex space (all same dimension now)
+        if self.combine_method == 'sum':
+            combined = torch.stack(vertex_outputs).sum(dim=0)
+
+        elif self.combine_method == 'concat':
+            # Pad if needed
+            while len(vertex_outputs) < self.num_neighborhoods:
+                vertex_outputs.append(torch.zeros_like(vertex_outputs[0]))
+
+            concatenated = torch.cat(vertex_outputs, dim=-1)
+            combined = self.combine(concatenated)
+
+        elif self.combine_method == 'attention':
+            # Pad if needed
+            while len(vertex_outputs) < self.num_neighborhoods:
+                vertex_outputs.append(torch.zeros_like(vertex_outputs[0]))
+
+            stacked = torch.stack(vertex_outputs, dim=1)  # [num_vertices, num_neighborhoods, out_dim]
+            combined, _ = self.combine(stacked, stacked, stacked)
+            combined = combined.mean(dim=1)
+
+        # Final NaN check
+        if torch.isnan(combined).any():
+            print(f"⚠️ WARNING: NaN in final combined output! Using input as fallback.")
+            combined = features_dict[0]
+
+        return combined
+
+    def get_time_constants(self) -> Dict[str, float]:
+        """
+        Get current time parameters.
+
+        Returns:
+            Dictionary with 't_d' and 't_u' values
+        """
+        return {
+            't_d': self.t_d.item() if hasattr(self, 't_d') else 0.0,
+            't_u': self.t_u.item() if hasattr(self, 't_u') else 0.0
+        }
+
+    def clamp_time_parameters(self, min_val: float = 1e-6, max_val: float = 10.0):
+        """
+        Clamp time parameters to safe range.
+
+        This should be called after optimizer.step() to prevent:
+        - Negative values
+        - Values too close to zero (numerical instability)
+        - Values too large (over-smoothing)
+
+        Args:
+            min_val: Minimum allowed value (default: 1e-6)
+            max_val: Maximum allowed value (default: 10.0)
+        """
+        with torch.no_grad():
+            if hasattr(self, 't_d'):
+                self.t_d.data = self.t_d.data.clamp(min=min_val, max=max_val)
+                if torch.isnan(self.t_d).any():
+                    self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+
+            if hasattr(self, 't_u'):
+                self.t_u.data = self.t_u.data.clamp(min=min_val, max=max_val)
+                if torch.isnan(self.t_u).any():
+                    self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+
+    def extra_repr(self) -> str:
+        """String representation showing key parameters."""
+        return (f'in_dim={self.in_dim}, out_dim={self.out_dim}, '
+                f'num_neighborhoods={self.num_neighborhoods}, '
+                f't_d={self.t_d.item():.4f}, t_u={self.t_u.item():.4f}, '
+                f'K={self.K}, combine_method={self.combine_method}')
 #
 # from torch import nn as nn
 # from torch_geometric.nn import MessagePassing

@@ -145,7 +145,8 @@ def continuous_simplicial_conv(
         x_k: torch.Tensor,
         laplacian_k: torch.Tensor,
         t: torch.Tensor,
-        K: Optional[int] = None
+        K: Optional[int] = None,
+        eps: float = 1e-8
 ) -> torch.Tensor:
     """
     Continuous simplicial convolution using matrix exponential: e^(-t*L) @ x
@@ -162,13 +163,31 @@ def continuous_simplicial_conv(
     Returns:
         Filtered features [num_simplices, features]
     """
+    # Validate inputs
+    if torch.isnan(x_k).any() or torch.isnan(laplacian_k).any():
+        raise ValueError("Input contains NaN!")
+
+    # Clamp time parameter to safe range
+    # t_safe = torch.clamp(t, min=eps, max=100.0)
+
     if K is None or K >= laplacian_k.size(0):
         # Full matrix exponential
-        exp_L = torch.matrix_exp(-t * laplacian_k)
+        # Add small epsilon to diagonal for numerical stability
+        L_stable = laplacian_k + eps * torch.eye(laplacian_k.size(0), device=laplacian_k.device)
+        exp_L = torch.matrix_exp(-t_safe * L_stable)
+
+        # Check for NaN in result
+        if torch.isnan(exp_L).any():
+            print(f"WARNING: matrix_exp produced NaN with t={t_safe.item()}")
+            return x_k  # Return input unchanged as fallback
+
         return exp_L @ x_k
     else:
         # Efficient approximation using top-K eigenvectors
         eigenvalues, eigenvectors = torch.linalg.eigh(laplacian_k)
+
+        # Filter out negative eigenvalues (shouldn't happen)
+        eigenvalues = torch.clamp(eigenvalues, min=0.0)
 
         # Take K largest eigenvalues (they're sorted ascending)
         top_K_indices = torch.argsort(eigenvalues, descending=True)[:K]
@@ -177,9 +196,16 @@ def continuous_simplicial_conv(
 
         # Compute e^(-t*λ) for top-K eigenvalues
         exp_lambda = torch.exp(-t * lambda_K)  # [K]
+        # clamp to safe range
+        exp_lambda = torch.clamp(exp_lambda, min=eps, max=1.0)
 
         # Reconstruct: V * diag(e^(-tλ)) * V^T * x
         result = V_K @ (exp_lambda.unsqueeze(-1) * (V_K.T @ x_k))
+
+        if torch.isnan(result).any():
+            print(f"WARNING: Eigenvalue approximation produced NaN")
+            return x_k
+
         return result
 
 

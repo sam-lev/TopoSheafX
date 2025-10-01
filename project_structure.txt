@@ -1,30 +1,25 @@
 .
 ├── README.md
-├── __init__.py
-├── config        
-│        ├── __init__.py
-│        ├── cmpnn_environment.yml
-│        ├── cmpnn_rpi5_hailo_environment.yml
-│        └── torchgeometric.yml
+├── __pycache__
+│   └── __init__.cpython-310.pyc
+├── config
+│   ├── environment.yml
+│   └── torchgeometric.yml
 ├── coverage.xml
 ├── data
-│        ├── MUTAG
-│        │        ├── processed
-│        │        │        ├── data.pt
-│        │        │        ├── pre_filter.pt
-│        │        │        └── pre_transform.pt
-│        │        └── raw
-│        │             ├── MUTAG_A.txt
-│        │             ├── MUTAG_edge_labels.txt
-│        │             ├── MUTAG_graph_indicator.txt
-│        │             ├── MUTAG_graph_labels.txt
-│        │             ├── MUTAG_node_labels.txt
-│        │             └── README.txt
-│        ├── __init__.py
-│        ├── __pycache__
-│        │        ├── __init__.cpython-310.pyc
-│        │        └── graph_datasets.cpython-310.pyc
-│        └── graph_datasets.py
+│   ├── MUTAG
+│   │   ├── processed
+│   │   └── raw
+│   │       ├── MUTAG_A.txt
+│   │       ├── MUTAG_edge_labels.txt
+│   │       ├── MUTAG_graph_indicator.txt
+│   │       ├── MUTAG_graph_labels.txt
+│   │       ├── MUTAG_node_labels.txt
+│   │       └── README.txt
+│   ├── __pycache__
+│   │   ├── __init__.cpython-310.pyc
+│   │   └── graph_datasets.cpython-310.pyc
+│   └── graph_datasets.py
 ├── docs
 ├── examples
 ├── project_structure.txt
@@ -33,77 +28,134 @@
 ├── run_tests.py
 ├── scratch.txt
 ├── setup.py
+├── test_mutag_loader.py
 ├── tests
-│        ├── __init__.py
-│        ├── __pycache__
-│        │        ├── __init__.cpython-310.pyc
-│        │        ├── conftest.cpython-310-pytest-8.4.1.pyc
-│        │        ├── conftest.cpython-311-pytest-7.4.0.pyc
-│        │        ├── test_aggregation.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_cmpnn.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_conv.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_copresheaf.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_copresheaf_ext.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_layers_parametrized.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_message_passing.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_model.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_models_coverage.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_mutag_loader.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_trainer_loops.cpython-310-pytest-8.4.1.pyc
-│        │        ├── test_trainer_smoke.cpython-310-pytest-8.4.1.pyc
-│        │        └── test_transformer_layer_ext.cpython-310-pytest-8.4.1.pyc
-│        ├── conftest.py
-│        ├── test_aggregation.py
-│        ├── test_cmpnn.py
-│        ├── test_conv.py
-│        ├── test_copresheaf.py
-│        ├── test_copresheaf_ext.py
-│        ├── test_layers_parametrized.py
-│        ├── test_message_passing.py
-│        ├── test_model.py
-│        ├── test_models_coverage.py
-│        ├── test_mutag_loader.py
-│        ├── test_trainer_loops.py
-│        ├── test_trainer_smoke.py
-│        └── test_transformer_layer_ext.py
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-310.pyc
+│   │   ├── conftest.cpython-310-pytest-8.4.1.pyc
+│   │   ├── conftest.cpython-311-pytest-7.4.0.pyc
+│   │   ├── test_aggregation.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_cmpnn.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_conv.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_copresheaf.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_copresheaf_ext.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_layers_parametrized.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_message_passing.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_model.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_models_coverage.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_mutag_loader.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_trainer_loops.cpython-310-pytest-8.4.1.pyc
+│   │   ├── test_trainer_smoke.cpython-310-pytest-8.4.1.pyc
+│   │   └── test_transformer_layer_ext.cpython-310-pytest-8.4.1.pyc
+│   ├── conftest.py
+│   ├── test_aggregation.py
+│   ├── test_cmpnn.py
+│   ├── test_conv.py
+│   ├── test_copresheaf.py
+│   ├── test_copresheaf_ext.py
+│   ├── test_layers_parametrized.py
+│   ├── test_message_passing.py
+│   ├── test_model.py
+│   ├── test_models_coverage.py
+│   ├── test_mutag_loader.py
+│   ├── test_trainer_loops.py
+│   ├── test_trainer_smoke.py
+│   └── test_transformer_layer_ext.py
 ├── toposheafx
-│        ├── __init__.py
-│        ├── __pycache__
-│        │        └── __init__.cpython-310.pyc
-│        ├── base
-│        │        ├── __init__.py
-│        │        ├── __pycache__
-│        │        │        ├── __init__.cpython-310.pyc
-│        │        │        ├── aggregation.cpython-310.pyc
-│        │        │        ├── conv.cpython-310.pyc
-│        │        │        └── message_passing.cpython-310.pyc
-│        │        ├── aggregation.py
-│        │        ├── conv.py
-│        │        └── message_passing.py
-│        ├── nn
-│        │        ├── __init__.py
-│        │        ├── __pycache__
-│        │        │        ├── __init__.cpython-310.pyc
-│        │        │        ├── layer.cpython-310.pyc
-│        │        │        └── model.cpython-310.pyc
-│        │        ├── layer.py
-│        │        └── model.py
-│        └── utils
-│            ├── __init__.py
-│            ├── __pycache__
-│            │        ├── __init__.cpython-310.pyc
-│            │        ├── guards.cpython-310.pyc
-│            │        └── mlp.cpython-310.pyc
-│            ├── debug.py
-│            ├── guards.py
-│            └── mlp.py
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-310.pyc
+│   │   └── __init__.cpython-311.pyc
+│   ├── base
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-310.pyc
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   ├── aggregation.cpython-310.pyc
+│   │   │   ├── aggregation.cpython-311.pyc
+│   │   │   ├── conv.cpython-310.pyc
+│   │   │   └── message_passing.cpython-310.pyc
+│   │   ├── aggregation.py
+│   │   ├── conv.py
+│   │   └── message_passing.py
+│   ├── data
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-310.pyc
+│   │   │   └── simplicial.cpython-310.pyc
+│   │   └── simplicial.py
+│   ├── nn
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-310.pyc
+│   │   │   ├── layer.cpython-310.pyc
+│   │   │   └── model.cpython-310.pyc
+│   │   ├── layer.py
+│   │   └── model.py
+│   └── utils
+│       ├── __init__.py
+│       ├── __pycache__
+│       │   ├── __init__.cpython-310.pyc
+│       │   ├── diagnostics.cpython-310.pyc
+│       │   ├── guards.cpython-310.pyc
+│       │   └── mlp.cpython-310.pyc
+│       ├── debug.py
+│       ├── diagnostics.py
+│       ├── guards.py
+│       └── mlp.py
+├── toposheafx.egg-info
+│   ├── PKG-INFO
+│   ├── SOURCES.txt
+│   ├── dependency_links.txt
+│   ├── entry_points.txt
+│   ├── requires.txt
+│   └── top_level.txt
 ├── train
-│        ├── __init__.py
-│        ├── __pycache__
-│        │        ├── __init__.cpython-310.pyc
-│        │        └── trainer.cpython-310.pyc
-│        ├── train_model.py
-│        └── trainer.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-310.pyc
+│   │   └── trainer.cpython-310.pyc
+│   ├── train_model.py
+│   └── trainer.py
 └── tutorials
+    ├── graph_classification
+    │   ├── copresheaf_gnn_experiments.ipynb
+    │   ├── copresheaf_gnn_experiments_0.ipynb
+    │   ├── copresheaf_gnn_experiments_1.ipynb
+    │   ├── copresheaf_gnn_experiments_2.ipynb
+    │   ├── copresheaf_gnn_experiments_3.ipynb
+    │   ├── copresheaf_gnn_experiments_4.ipynb
+    │   ├── copresheaf_gnn_experiments_enhanced.ipynb
+    │   ├── copresheaf_gnn_toposheafx.ipynb
+    │   ├── data
+    │   │   └── MUTAG
+    │   │       ├── MUTAG
+    │   │       │   ├── processed
+    │   │       │   │   ├── data.pt
+    │   │       │   │   ├── pre_filter.pt
+    │   │       │   │   └── pre_transform.pt
+    │   │       │   └── raw
+    │   │       │       ├── MUTAG_A.txt
+    │   │       │       ├── MUTAG_edge_labels.txt
+    │   │       │       ├── MUTAG_graph_indicator.txt
+    │   │       │       ├── MUTAG_graph_labels.txt
+    │   │       │       ├── MUTAG_node_labels.txt
+    │   │       │       └── README.txt
+    │   │       ├── processed
+    │   │       │   ├── data.pt
+    │   │       │   ├── pre_filter.pt
+    │   │       │   └── pre_transform.pt
+    │   │       └── raw
+    │   │           ├── MUTAG_A.txt
+    │   │           ├── MUTAG_edge_labels.txt
+    │   │           ├── MUTAG_graph_indicator.txt
+    │   │           ├── MUTAG_graph_labels.txt
+    │   │           ├── MUTAG_node_labels.txt
+    │   │           └── README.txt
+    │   └── toposheafx_copresheaf_gnn_experiments.ipynb
+    └── simplicial
+        ├── continuous_copresheaf_simplicial_neural_network_tutorial.ipynb
+        ├── copresheaf_simplicial_tutorial.ipynb
+        └── cross_dimensional_simplicial_tutorial.ipynb
 
-22 directories, 85 files
+35 directories, 124 files
