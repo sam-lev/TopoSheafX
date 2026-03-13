@@ -168,7 +168,7 @@ def continuous_simplicial_conv(
         raise ValueError("Input contains NaN!")
 
     # Clamp time parameter to safe range
-    # t_safe = torch.clamp(t, min=eps, max=100.0)
+    t_safe = torch.clamp(t, min=eps, max=100.0)
 
     if K is None or K >= laplacian_k.size(0):
         # Full matrix exponential
