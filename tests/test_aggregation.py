@@ -252,7 +252,7 @@ class TestAggregation:
 
         repr_str = agg.extra_repr()
         assert "method=attention" in repr_str
-        assert f'dim={setup_basic["dim"]}' in repr_str
+        assert f"dim={setup_basic['dim']}" in repr_str
         assert "num_heads=4" in repr_str
 
 

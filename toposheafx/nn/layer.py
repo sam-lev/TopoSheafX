@@ -42,18 +42,23 @@ Core architecture classes for CMPNN and CHOMPNN models using Copresheaf-based me
 These implementations follow the mathematical framework from "Copresheaf Topological Neural Networks"
 by Hajij et al., specifically implementing Propositions 1 and 3.
 """
-from typing import Optional, Dict
-import numpy as np
 
+from typing import Optional
+
+import numpy as np
 import torch
 from torch import nn
 from torch_geometric.utils import scatter
 from torch_geometric.utils import softmax as segment_softmax
 
 from toposheafx.base.conv import Conv, HigherOrderConv, continuous_simplicial_conv
-from toposheafx.base.message_passing import HigherOrderMessagePassing, CrossDimensionalMessagePassing
-from toposheafx.utils.guards import _check_index, _same_device
+from toposheafx.base.message_passing import (
+    CrossDimensionalMessagePassing,
+    HigherOrderMessagePassing,
+)
 from toposheafx.data.simplicial import SimplicialFeatures
+from toposheafx.utils.guards import _check_index, _same_device
+
 
 class CopresheafLayer(nn.Module):
     """
@@ -338,8 +343,9 @@ class SimplicialComplexCopresheafLayer(nn.Module):
     - Co-boundary (edge-triangle)
     """
 
-    def __init__(self, in_dim, out_dim, num_neighborhoods=3,
-                 aggregation='sum', combine_method='concat'):
+    def __init__(
+        self, in_dim, out_dim, num_neighborhoods=3, aggregation="sum", combine_method="concat"
+    ):
         super().__init__()
 
         self.in_dim = in_dim
@@ -352,14 +358,14 @@ class SimplicialComplexCopresheafLayer(nn.Module):
             out_dim=out_dim,
             num_neighborhoods=num_neighborhoods,
             aggr=aggregation,
-            combine_method=combine_method
+            combine_method=combine_method,
         )
 
         # Neighborhood-specific aggregation strategies
         self.neighborhood_configs = {
-            0: {'name': 'adjacency', 'aggr': 'mean'},  # Normalize by degree
-            1: {'name': 'incidence', 'aggr': 'sum'},  # Accumulate from edges
-            2: {'name': 'coboundary', 'aggr': 'max'}  # Dominant triangle feature
+            0: {"name": "adjacency", "aggr": "mean"},  # Normalize by degree
+            1: {"name": "incidence", "aggr": "sum"},  # Accumulate from edges
+            2: {"name": "coboundary", "aggr": "max"},  # Dominant triangle feature
         }
 
     def forward(self, x, edge_index_list, simplex_features=None):
@@ -408,7 +414,7 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
             self.message_passers[name] = CrossDimensionalMessagePassing(
                 source_dim=feature_dims[source_dim],
                 target_dim=feature_dims[target_dim],
-                out_dim=out_dims[target_dim]
+                out_dim=out_dims[target_dim],
             )
 
     def forward(self, features, neighborhoods):
@@ -426,7 +432,7 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
         # Group neighborhoods by target dimension
         by_target = {}
         for name, config in neighborhoods.items():
-            target = config['target_dim']
+            target = config["target_dim"]
             if target not in by_target:
                 by_target[target] = []
             by_target[target].append((name, config))
@@ -436,8 +442,8 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
             messages_list = []
 
             for name, config in dim_neighborhoods:
-                source_dim = config['source_dim']
-                edge_index = config['edge_index']
+                source_dim = config["source_dim"]
+                edge_index = config["edge_index"]
 
                 if edge_index.shape[1] == 0:  # Skip empty neighborhoods
                     continue
@@ -446,9 +452,7 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
                 x_source = features[source_dim]
                 x_target = features[target_dim]
 
-                messages = self.message_passers[name](
-                    x_source, x_target, edge_index
-                )
+                messages = self.message_passers[name](x_source, x_target, edge_index)
                 messages_list.append(messages)
 
             # Combine messages from all neighborhoods targeting this dimension
@@ -730,6 +734,7 @@ class MultiDimensionalSimplicialCopresheafLayer(nn.Module):
 #                     self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
 #
 
+
 class ContinuousCopresheafLayer(nn.Module):
     """
     Integrates copresheaf morphisms with continuous Hodge-Laplacian dynamics.
@@ -761,15 +766,15 @@ class ContinuousCopresheafLayer(nn.Module):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: int,
-            k_simplex_dim: int,
-            t_d_init: float = 0.1,
-            t_u_init: float = 0.1,
-            learnable_t: bool = True,
-            K: Optional[int] = None,
-            use_morphisms: bool = True
+        self,
+        in_dim: int,
+        out_dim: int,
+        k_simplex_dim: int,
+        t_d_init: float = 0.1,
+        t_u_init: float = 0.1,
+        learnable_t: bool = True,
+        K: Optional[int] = None,
+        use_morphisms: bool = True,
     ):
         super().__init__()
 
@@ -787,13 +792,13 @@ class ContinuousCopresheafLayer(nn.Module):
             # ρ_down: Transport from (k-1)-simplices to k-simplices
             self.rho_down = nn.Sequential(
                 nn.Linear(2 * in_dim, out_dim),  # [h_k, h_{k-1}]
-                nn.Tanh()  # Smooth transport
+                nn.Tanh(),  # Smooth transport
             )
 
             # ρ_up: Transport from (k+1)-simplices to k-simplices
             self.rho_up = nn.Sequential(
                 nn.Linear(2 * in_dim, out_dim),  # [h_k, h_{k+1}]
-                nn.Tanh()
+                nn.Tanh(),
             )
 
         # COSIMO projections (Equation 10: Θ and Ψ)
@@ -805,13 +810,13 @@ class ContinuousCopresheafLayer(nn.Module):
         # MESSAGE AND UPDATE FUNCTIONS (Copresheaf α and β)
         self.message_fn = nn.Sequential(
             nn.Linear(out_dim + out_dim, out_dim),  # [h_k, aggregated_messages]
-            nn.ReLU()
+            nn.ReLU(),
         )
 
         self.update_fn = nn.Sequential(
             nn.Linear(out_dim + out_dim, out_dim),  # [h_k, combined_features]
             nn.ReLU(),
-            nn.LayerNorm(out_dim)
+            nn.LayerNorm(out_dim),
         )
 
         self.reset_parameters()
@@ -822,16 +827,16 @@ class ContinuousCopresheafLayer(nn.Module):
             self.t_d = nn.Parameter(torch.tensor(t_d_init, dtype=torch.float32))
             self.t_u = nn.Parameter(torch.tensor(t_u_init, dtype=torch.float32))
         else:
-            self.register_buffer('t_d', torch.tensor(t_d_init, dtype=torch.float32))
-            self.register_buffer('t_u', torch.tensor(t_u_init, dtype=torch.float32))
+            self.register_buffer("t_d", torch.tensor(t_d_init, dtype=torch.float32))
+            self.register_buffer("t_u", torch.tensor(t_u_init, dtype=torch.float32))
 
     def forward(
-            self,
-            X_k: torch.Tensor,
-            X_k_down: torch.Tensor,
-            X_k_up: torch.Tensor,
-            B_k: Optional[torch.Tensor] = None,
-            B_k_plus_1: Optional[torch.Tensor] = None
+        self,
+        X_k: torch.Tensor,
+        X_k_down: torch.Tensor,
+        X_k_up: torch.Tensor,
+        B_k: Optional[torch.Tensor] = None,
+        B_k_plus_1: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass combining copresheaf morphisms with continuous dynamics.
@@ -877,14 +882,18 @@ class ContinuousCopresheafLayer(nn.Module):
 
         # Independent lower dynamics
         if B_k is not None:
-            lower_diffusion = continuous_simplicial_conv(X_k_down_transported, L_k_down, self.t_d, self.K)
+            lower_diffusion = continuous_simplicial_conv(
+                X_k_down_transported, L_k_down, self.t_d, self.K
+            )
             lower_features = self.theta_down(lower_diffusion)
         else:
             lower_features = torch.zeros(X_k.size(0), self.out_dim, device=X_k.device)
 
         # Independent upper dynamics
         if B_k_plus_1 is not None:
-            upper_diffusion = continuous_simplicial_conv(X_k_up_transported, L_k_up, self.t_u, self.K)
+            upper_diffusion = continuous_simplicial_conv(
+                X_k_up_transported, L_k_up, self.t_u, self.K
+            )
             upper_features = self.theta_up(upper_diffusion)
         else:
             upper_features = torch.zeros(X_k.size(0), self.out_dim, device=X_k.device)
@@ -923,6 +932,7 @@ class ContinuousCopresheafLayer(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
+
 class ContinuousCHOMPNNLayer(nn.Module):
     """
     Continuous Higher-Order Message Passing layer combining:
@@ -934,15 +944,15 @@ class ContinuousCHOMPNNLayer(nn.Module):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: int,
-            num_neighborhoods: int = 3,
-            t_d_init: float = 0.1,
-            t_u_init: float = 0.1,
-            learnable_t: bool = True,
-            K: Optional[int] = None,
-            combine_method: str = 'concat'
+        self,
+        in_dim: int,
+        out_dim: int,
+        num_neighborhoods: int = 3,
+        t_d_init: float = 0.1,
+        t_u_init: float = 0.1,
+        learnable_t: bool = True,
+        K: Optional[int] = None,
+        combine_method: str = "concat",
     ):
         super().__init__()
 
@@ -961,36 +971,33 @@ class ContinuousCHOMPNNLayer(nn.Module):
         self._create_time_parameters(t_d_init, t_u_init, learnable_t)
 
         # One continuous copresheaf layer per neighborhood
-        self.neighborhood_layers = nn.ModuleList([
-            ContinuousCopresheafLayer(
-                in_dim=in_dim,
-                out_dim=out_dim,
-                k_simplex_dim=k,
-                t_d_init=t_d_init,
-                t_u_init=t_u_init,
-                learnable_t=learnable_t,
-                K=K,
-                combine_method='sum'  # Inner combination
-            )
-            for k in range(num_neighborhoods)
-        ])
+        self.neighborhood_layers = nn.ModuleList(
+            [
+                ContinuousCopresheafLayer(
+                    in_dim=in_dim,
+                    out_dim=out_dim,
+                    k_simplex_dim=k,
+                    t_d_init=t_d_init,
+                    t_u_init=t_u_init,
+                    learnable_t=learnable_t,
+                    K=K,
+                    combine_method="sum",  # Inner combination
+                )
+                for k in range(num_neighborhoods)
+            ]
+        )
 
         # Cross-neighborhood combination
-        if combine_method == 'concat':
-            self.combine = nn.Sequential(
-                nn.Linear(num_neighborhoods * out_dim, out_dim),
-                nn.ReLU()
-            )
-        elif combine_method == 'sum':
+        if combine_method == "concat":
+            self.combine = nn.Sequential(nn.Linear(num_neighborhoods * out_dim, out_dim), nn.ReLU())
+        elif combine_method == "sum":
             self.combine = None
-        elif combine_method == 'attention':
-            self.combine = nn.MultiheadAttention(
-                embed_dim=out_dim,
-                num_heads=4,
-                batch_first=True
-            )
+        elif combine_method == "attention":
+            self.combine = nn.MultiheadAttention(embed_dim=out_dim, num_heads=4, batch_first=True)
         else:
-            raise ValueError(f"Unknown combine_method: {combine_method}. Must be 'concat', 'sum', or 'attention'")
+            raise ValueError(
+                f"Unknown combine_method: {combine_method}. Must be 'concat', 'sum', or 'attention'"
+            )
 
         # Initialize all parameters at the end
         self.reset_parameters()
@@ -1020,24 +1027,12 @@ class ContinuousCHOMPNNLayer(nn.Module):
 
         # Create parameters with explicit dtype
         if learnable_t:
-            self.t_d = nn.Parameter(
-                torch.tensor(t_d_init, dtype=torch.float32),
-                requires_grad=True
-            )
-            self.t_u = nn.Parameter(
-                torch.tensor(t_u_init, dtype=torch.float32),
-                requires_grad=True
-            )
+            self.t_d = nn.Parameter(torch.tensor(t_d_init, dtype=torch.float32), requires_grad=True)
+            self.t_u = nn.Parameter(torch.tensor(t_u_init, dtype=torch.float32), requires_grad=True)
         else:
             # Use buffers for non-learnable parameters
-            self.register_buffer(
-                't_d',
-                torch.tensor(t_d_init, dtype=torch.float32)
-            )
-            self.register_buffer(
-                't_u',
-                torch.tensor(t_u_init, dtype=torch.float32)
-            )
+            self.register_buffer("t_d", torch.tensor(t_d_init, dtype=torch.float32))
+            self.register_buffer("t_u", torch.tensor(t_u_init, dtype=torch.float32))
 
         # Immediate validation
         self._validate_time_parameters()
@@ -1051,27 +1046,51 @@ class ContinuousCHOMPNNLayer(nn.Module):
         - Gradient updates that produce NaN
         - Numerical instability
         """
-        if hasattr(self, 't_d'):
+        if hasattr(self, "t_d"):
             if torch.isnan(self.t_d).any():
-                print(f"⚠️ CRITICAL: t_d is NaN in {self.__class__.__name__}! Resetting to {self._t_d_init}")
-                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+                print(
+                    f"⚠️ CRITICAL: t_d is NaN in {self.__class__.__name__}! Resetting to {self._t_d_init}"
+                )
+                self.t_d.data = torch.tensor(
+                    self._t_d_init, dtype=torch.float32, device=self.t_d.device
+                )
             elif torch.isinf(self.t_d).any():
-                print(f"⚠️ CRITICAL: t_d is Inf in {self.__class__.__name__}! Resetting to {self._t_d_init}")
-                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+                print(
+                    f"⚠️ CRITICAL: t_d is Inf in {self.__class__.__name__}! Resetting to {self._t_d_init}"
+                )
+                self.t_d.data = torch.tensor(
+                    self._t_d_init, dtype=torch.float32, device=self.t_d.device
+                )
             elif self.t_d.item() <= 0:
-                print(f"⚠️ WARNING: t_d is non-positive ({self.t_d.item()})! Resetting to {self._t_d_init}")
-                self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+                print(
+                    f"⚠️ WARNING: t_d is non-positive ({self.t_d.item()})! Resetting to {self._t_d_init}"
+                )
+                self.t_d.data = torch.tensor(
+                    self._t_d_init, dtype=torch.float32, device=self.t_d.device
+                )
 
-        if hasattr(self, 't_u'):
+        if hasattr(self, "t_u"):
             if torch.isnan(self.t_u).any():
-                print(f"⚠️ CRITICAL: t_u is NaN in {self.__class__.__name__}! Resetting to {self._t_u_init}")
-                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+                print(
+                    f"⚠️ CRITICAL: t_u is NaN in {self.__class__.__name__}! Resetting to {self._t_u_init}"
+                )
+                self.t_u.data = torch.tensor(
+                    self._t_u_init, dtype=torch.float32, device=self.t_u.device
+                )
             elif torch.isinf(self.t_u).any():
-                print(f"⚠️ CRITICAL: t_u is Inf in {self.__class__.__name__}! Resetting to {self._t_u_init}")
-                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+                print(
+                    f"⚠️ CRITICAL: t_u is Inf in {self.__class__.__name__}! Resetting to {self._t_u_init}"
+                )
+                self.t_u.data = torch.tensor(
+                    self._t_u_init, dtype=torch.float32, device=self.t_u.device
+                )
             elif self.t_u.item() <= 0:
-                print(f"⚠️ WARNING: t_u is non-positive ({self.t_u.item()})! Resetting to {self._t_u_init}")
-                self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+                print(
+                    f"⚠️ WARNING: t_u is non-positive ({self.t_u.item()})! Resetting to {self._t_u_init}"
+                )
+                self.t_u.data = torch.tensor(
+                    self._t_u_init, dtype=torch.float32, device=self.t_u.device
+                )
 
     def reset_parameters(self):
         """
@@ -1086,12 +1105,12 @@ class ContinuousCHOMPNNLayer(nn.Module):
         """
         # Reset neighborhood layers (will initialize their time parameters)
         for layer in self.neighborhood_layers:
-            if hasattr(layer, 'reset_parameters'):
+            if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
 
         # Initialize combination layers
         if self.combine is not None:
-            if self.combine_method == 'concat':
+            if self.combine_method == "concat":
                 # Sequential with Linear layers
                 for module in self.combine.modules():
                     if isinstance(module, nn.Linear):
@@ -1099,19 +1118,17 @@ class ContinuousCHOMPNNLayer(nn.Module):
                         if module.bias is not None:
                             nn.init.zeros_(module.bias)
 
-            elif self.combine_method == 'attention':
+            elif self.combine_method == "attention":
                 # MultiheadAttention initializes itself properly
                 # But we can ensure it's reset if needed
-                if hasattr(self.combine, '_reset_parameters'):
+                if hasattr(self.combine, "_reset_parameters"):
                     self.combine._reset_parameters()
 
         # Final validation of time parameters
         self._validate_time_parameters()
 
     def forward(
-            self,
-            features_dict: Dict[int, torch.Tensor],
-            boundary_operators: Dict[int, torch.Tensor]
+        self, features_dict: dict[int, torch.Tensor], boundary_operators: dict[int, torch.Tensor]
     ) -> torch.Tensor:
         """
         Forward pass across multiple simplex dimensions.
@@ -1137,7 +1154,9 @@ class ContinuousCHOMPNNLayer(nn.Module):
             X_k = features_dict[k]
 
             # Get features from neighboring dimensions
-            X_k_down = features_dict.get(k - 1, torch.zeros_like(X_k)) if k > 0 else torch.zeros_like(X_k)
+            X_k_down = (
+                features_dict.get(k - 1, torch.zeros_like(X_k)) if k > 0 else torch.zeros_like(X_k)
+            )
             X_k_up = features_dict.get(k + 1, torch.zeros_like(X_k))
 
             # Get boundary operators
@@ -1184,10 +1203,10 @@ class ContinuousCHOMPNNLayer(nn.Module):
             return torch.zeros_like(features_dict[0])
 
         # Combine outputs in vertex space (all same dimension now)
-        if self.combine_method == 'sum':
+        if self.combine_method == "sum":
             combined = torch.stack(vertex_outputs).sum(dim=0)
 
-        elif self.combine_method == 'concat':
+        elif self.combine_method == "concat":
             # Pad if needed
             while len(vertex_outputs) < self.num_neighborhoods:
                 vertex_outputs.append(torch.zeros_like(vertex_outputs[0]))
@@ -1195,23 +1214,25 @@ class ContinuousCHOMPNNLayer(nn.Module):
             concatenated = torch.cat(vertex_outputs, dim=-1)
             combined = self.combine(concatenated)
 
-        elif self.combine_method == 'attention':
+        elif self.combine_method == "attention":
             # Pad if needed
             while len(vertex_outputs) < self.num_neighborhoods:
                 vertex_outputs.append(torch.zeros_like(vertex_outputs[0]))
 
-            stacked = torch.stack(vertex_outputs, dim=1)  # [num_vertices, num_neighborhoods, out_dim]
+            stacked = torch.stack(
+                vertex_outputs, dim=1
+            )  # [num_vertices, num_neighborhoods, out_dim]
             combined, _ = self.combine(stacked, stacked, stacked)
             combined = combined.mean(dim=1)
 
         # Final NaN check
         if torch.isnan(combined).any():
-            print(f"⚠️ WARNING: NaN in final combined output! Using input as fallback.")
+            print("⚠️ WARNING: NaN in final combined output! Using input as fallback.")
             combined = features_dict[0]
 
         return combined
 
-    def get_time_constants(self) -> Dict[str, float]:
+    def get_time_constants(self) -> dict[str, float]:
         """
         Get current time parameters.
 
@@ -1219,8 +1240,8 @@ class ContinuousCHOMPNNLayer(nn.Module):
             Dictionary with 't_d' and 't_u' values
         """
         return {
-            't_d': self.t_d.item() if hasattr(self, 't_d') else 0.0,
-            't_u': self.t_u.item() if hasattr(self, 't_u') else 0.0
+            "t_d": self.t_d.item() if hasattr(self, "t_d") else 0.0,
+            "t_u": self.t_u.item() if hasattr(self, "t_u") else 0.0,
         }
 
     def clamp_time_parameters(self, min_val: float = 1e-6, max_val: float = 10.0):
@@ -1237,22 +1258,30 @@ class ContinuousCHOMPNNLayer(nn.Module):
             max_val: Maximum allowed value (default: 10.0)
         """
         with torch.no_grad():
-            if hasattr(self, 't_d'):
+            if hasattr(self, "t_d"):
                 self.t_d.data = self.t_d.data.clamp(min=min_val, max=max_val)
                 if torch.isnan(self.t_d).any():
-                    self.t_d.data = torch.tensor(self._t_d_init, dtype=torch.float32, device=self.t_d.device)
+                    self.t_d.data = torch.tensor(
+                        self._t_d_init, dtype=torch.float32, device=self.t_d.device
+                    )
 
-            if hasattr(self, 't_u'):
+            if hasattr(self, "t_u"):
                 self.t_u.data = self.t_u.data.clamp(min=min_val, max=max_val)
                 if torch.isnan(self.t_u).any():
-                    self.t_u.data = torch.tensor(self._t_u_init, dtype=torch.float32, device=self.t_u.device)
+                    self.t_u.data = torch.tensor(
+                        self._t_u_init, dtype=torch.float32, device=self.t_u.device
+                    )
 
     def extra_repr(self) -> str:
         """String representation showing key parameters."""
-        return (f'in_dim={self.in_dim}, out_dim={self.out_dim}, '
-                f'num_neighborhoods={self.num_neighborhoods}, '
-                f't_d={self.t_d.item():.4f}, t_u={self.t_u.item():.4f}, '
-                f'K={self.K}, combine_method={self.combine_method}')
+        return (
+            f"in_dim={self.in_dim}, out_dim={self.out_dim}, "
+            f"num_neighborhoods={self.num_neighborhoods}, "
+            f"t_d={self.t_d.item():.4f}, t_u={self.t_u.item():.4f}, "
+            f"K={self.K}, combine_method={self.combine_method}"
+        )
+
+
 #
 # from torch import nn as nn
 # from torch_geometric.nn import MessagePassing

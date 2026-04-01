@@ -244,7 +244,8 @@ class MessagePassing(PyGMessagePassing):
         """
         rho_input_dim = 2 * in_dim + edge_attr_dim  # [h_y, h_x, edge_attr]
         return nn.Sequential(
-            nn.Linear(rho_input_dim, out_dim), nn.Tanh()  # Smooth nonlinearity for stable transport
+            nn.Linear(rho_input_dim, out_dim),
+            nn.Tanh(),  # Smooth nonlinearity for stable transport
         )
 
     def _default_message_factory(self, in_dim: int, out_dim: int):
@@ -417,7 +418,8 @@ class MessagePassing(PyGMessagePassing):
             if edge_attr.size(1) != self.edge_attr_dim:
                 raise ValueError(
                     f"Edge attribute dimension mismatch: "
-                    f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}")
+                    f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}"
+                )
 
         # Step 1: Apply copresheaf morphism ρ_{j→i}: F(j) → F(i)
         if edge_attr is not None:
@@ -834,14 +836,12 @@ class HigherOrderMessagePassing(nn.Module):
 
         if len(edge_index_list) != self.num_neighborhoods:
             raise ValueError(
-                f"Expected {self.num_neighborhoods} edge_index tensors, "
-                f"got {len(edge_index_list)}"
+                f"Expected {self.num_neighborhoods} edge_index tensors, got {len(edge_index_list)}"
             )
 
         if len(edge_attr_list) != self.num_neighborhoods:
             raise ValueError(
-                f"Expected {self.num_neighborhoods} edge_attr tensors, "
-                f"got {len(edge_attr_list)}"
+                f"Expected {self.num_neighborhoods} edge_attr tensors, got {len(edge_attr_list)}"
             )
 
         # Step 1: Process each neighborhood independently with specific aggregation
@@ -963,8 +963,7 @@ class HigherOrderMessagePassing(nn.Module):
         """
         if not (0 <= neighborhood_idx < self.num_neighborhoods):
             raise IndexError(
-                f"Neighborhood index {neighborhood_idx} out of range "
-                f"[0, {self.num_neighborhoods})"
+                f"Neighborhood index {neighborhood_idx} out of range [0, {self.num_neighborhoods})"
             )
 
         # Update the specific neighborhood's aggregation
@@ -1051,15 +1050,9 @@ class CrossDimensionalMessagePassing(MessagePassing):
     where x and y may have different dimensions.
     """
 
-    def __init__(self, source_dim, target_dim, out_dim, aggr='sum', **kwargs):
+    def __init__(self, source_dim, target_dim, out_dim, aggr="sum", **kwargs):
         # Pass required arguments to MessagePassing parent
-        super().__init__(
-            in_dim=target_dim,
-            out_dim=out_dim,
-            edge_attr_dim=0,
-            aggr=aggr,
-            **kwargs
-        )
+        super().__init__(in_dim=target_dim, out_dim=out_dim, edge_attr_dim=0, aggr=aggr, **kwargs)
 
         self.source_dim = source_dim
         self.target_dim = target_dim
@@ -1069,20 +1062,14 @@ class CrossDimensionalMessagePassing(MessagePassing):
         self.copresheaf_map = nn.Sequential(
             nn.Linear(source_dim, (source_dim + target_dim) // 2),
             nn.ReLU(),
-            nn.Linear((source_dim + target_dim) // 2, target_dim)
+            nn.Linear((source_dim + target_dim) // 2, target_dim),
         )
 
         # Message function α_k
-        self.message_fn = nn.Sequential(
-            nn.Linear(target_dim + target_dim, out_dim),
-            nn.ReLU()
-        )
+        self.message_fn = nn.Sequential(nn.Linear(target_dim + target_dim, out_dim), nn.ReLU())
 
         # Update function β
-        self.update_fn = nn.Sequential(
-            nn.Linear(target_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        self.update_fn = nn.Sequential(nn.Linear(target_dim + out_dim, out_dim), nn.ReLU())
 
     def forward(self, x_source, x_target, edge_index):
         """

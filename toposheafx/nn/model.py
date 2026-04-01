@@ -6,18 +6,24 @@ These models implement the full architectures described in "Copresheaf Topologic
 by Hajij et al., specifically for graph classification and regression tasks.
 """
 
-from typing import Optional, Dict, List, Tuple
+from typing import Optional
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch_geometric.utils import scatter
 
-from toposheafx.nn.layer import CHOMPNNLayer, CMPNNLayer, SimplicialComplexCopresheafLayer,\
-    MultiDimensionalSimplicialCopresheafLayer, ContinuousCopresheafLayer, ContinuousCHOMPNNLayer
-from toposheafx.base.message_passing import HigherOrderMessagePassing
 from toposheafx.base.aggregation import Aggregation
+from toposheafx.base.message_passing import HigherOrderMessagePassing
+from toposheafx.base.conv import ContinuousConv
 from toposheafx.data.simplicial import SimplicialFeatures
+from toposheafx.nn.layer import (
+    CHOMPNNLayer,
+    CMPNNLayer,
+    ContinuousCopresheafLayer,
+    MultiDimensionalSimplicialCopresheafLayer,
+    SimplicialComplexCopresheafLayer,
+)
 
 
 # Create a node-level version of CMPNN
@@ -29,20 +35,20 @@ class NodeCMPNN(nn.Module):
 
         self.encoder = nn.Linear(in_dim, hidden_dim)
 
-        self.layers = nn.ModuleList([
-            CMPNNLayer(
-                in_dim=hidden_dim,
-                out_dim=hidden_dim,
-                num_neighborhoods=num_neighborhoods
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                CMPNNLayer(
+                    in_dim=hidden_dim, out_dim=hidden_dim, num_neighborhoods=num_neighborhoods
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         self.readout = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, x, edge_index_list, edge_attr_list=None):
@@ -55,6 +61,7 @@ class NodeCMPNN(nn.Module):
             x = F.relu(x)
 
         return self.readout(x)  # [num_nodes, out_dim]
+
 
 class CMPNN(nn.Module):
     """
@@ -342,8 +349,15 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
     3. Readout for final predictions
     """
 
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3,
-                 dropout=0.1, aggregation_strategy='adaptive'):
+    def __init__(
+        self,
+        in_dim,
+        hidden_dim,
+        out_dim,
+        num_layers=3,
+        dropout=0.1,
+        aggregation_strategy="adaptive",
+    ):
         super().__init__()
 
         self.in_dim = in_dim
@@ -353,9 +367,7 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
 
         # Initial encoding
         self.encoder = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_dim)
+            nn.Linear(in_dim, hidden_dim), nn.ReLU(), nn.LayerNorm(hidden_dim)
         )
 
         # Stack of copresheaf layers with different aggregation strategies
@@ -363,40 +375,35 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
 
         for i in range(num_layers):
             # Use different aggregation strategies at different depths
-            if aggregation_strategy == 'adaptive':
+            if aggregation_strategy == "adaptive":
                 if i == 0:
-                    aggr = 'mean'  # Normalize early
+                    aggr = "mean"  # Normalize early
                 elif i < num_layers - 1:
-                    aggr = 'sum'  # Accumulate middle
+                    aggr = "sum"  # Accumulate middle
                 else:
-                    aggr = 'attention'  # Learn importance at end
+                    aggr = "attention"  # Learn importance at end
             else:
                 aggr = aggregation_strategy
 
             # Create layer with appropriate aggregation
-            if aggr == 'attention':
+            if aggr == "attention":
                 # Use attention-based aggregation
                 layer = HigherOrderMessagePassing(
                     in_dim=hidden_dim,
                     out_dim=hidden_dim,
                     num_neighborhoods=3,
-                    aggr=Aggregation('attention', dim=hidden_dim, num_heads=4),
-                    combine_method='concat'
+                    aggr=Aggregation("attention", dim=hidden_dim, num_heads=4),
+                    combine_method="concat",
                 )
             else:
                 layer = SimplicialComplexCopresheafLayer(
-                    in_dim=hidden_dim,
-                    out_dim=hidden_dim,
-                    num_neighborhoods=3,
-                    aggregation=aggr
+                    in_dim=hidden_dim, out_dim=hidden_dim, num_neighborhoods=3, aggregation=aggr
                 )
 
             self.layers.append(layer)
 
         # Layer norms for stability
-        self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
-        ])
+        self.layer_norms = nn.ModuleList([nn.LayerNorm(hidden_dim) for _ in range(num_layers)])
 
         # Dropout
         self.dropout = nn.Dropout(dropout)
@@ -406,7 +413,7 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, x, edge_index_list, batch=None):
@@ -439,7 +446,8 @@ class SimplicialComplexCopresheafNetwork(nn.Module):
         # Graph-level pooling if batch is provided
         if batch is not None:
             from torch_geometric.utils import scatter
-            x = scatter(x, batch, dim=0, reduce='mean')
+
+            x = scatter(x, batch, dim=0, reduce="mean")
 
         # Final readout
         return self.readout(x)
@@ -454,31 +462,35 @@ class CrossDimensionalSimplicialCopresheafNetwork(nn.Module):
         super().__init__()
 
         # Initial encoders for each dimension
-        self.encoders = nn.ModuleDict({
-            str(dim): nn.Linear(initial_dims[dim], hidden_dims[dim])
-            for dim in initial_dims.keys()
-        })
+        self.encoders = nn.ModuleDict(
+            {
+                str(dim): nn.Linear(initial_dims[dim], hidden_dims[dim])
+                for dim in initial_dims
+            }
+        )
 
         # Neighborhood configuration - must match extract_cross_dimensional_neighborhoods
         neighborhoods_config = [
-            ('0→0', 0, 0),  # Vertex adjacency
-            ('0→1', 0, 1),  # Vertex to edge
-            ('1→0', 1, 0),  # Edge to vertex
-            ('1→1', 1, 1),  # Edge adjacency
-            ('1→2', 1, 2),  # Edge to triangle
-            ('2→1', 2, 1),  # Triangle to edge
-            ('2→0', 2, 0),  # Triangle to vertex
+            ("0→0", 0, 0),  # Vertex adjacency
+            ("0→1", 0, 1),  # Vertex to edge
+            ("1→0", 1, 0),  # Edge to vertex
+            ("1→1", 1, 1),  # Edge adjacency
+            ("1→2", 1, 2),  # Edge to triangle
+            ("2→1", 2, 1),  # Triangle to edge
+            ("2→0", 2, 0),  # Triangle to vertex
         ]
 
         # Stack of cross-dimensional layers
-        self.layers = nn.ModuleList([
-            MultiDimensionalSimplicialCopresheafLayer(
-                feature_dims=hidden_dims,
-                out_dims=hidden_dims,
-                neighborhoods_config=neighborhoods_config
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                MultiDimensionalSimplicialCopresheafLayer(
+                    feature_dims=hidden_dims,
+                    out_dims=hidden_dims,
+                    neighborhoods_config=neighborhoods_config,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         # Final readout (only from vertices for node classification)
         self.readout = nn.Linear(hidden_dims[0], out_dim)
@@ -504,230 +516,6 @@ class CrossDimensionalSimplicialCopresheafNetwork(nn.Module):
         # Readout from vertices
         return self.readout(features[0])
 
-#
-#  ! Redundant with new multidimensional odel, handles multiple topological cell dimensions,
-#  ! including vertex only,
-#  ! deprecated implementation
-#
-# class ContinuousSimplicialModel(nn.Module):
-#     """
-#     Continuous Simplicial Neural Network based on COSIMO methodology.
-#
-#     COSIMO Model implementing Equation 10 with multiple branches.
-#
-#     From paper Equation 10:
-#     X^l_k = σ(e^{-t_d L_{k,d}} X^{l-1}_{k,d} Θ^l_{k,d} +
-#              e^{-t_u L_{k,u}} X^{l-1}_{k,u} Θ^l_{k,u} +
-#              e^{-t_d L_{k,d}} X^{l-1}_k Ψ^l_{k,d} +
-#              e^{-t_u L_{k,u}} X^{l-1}_k Ψ^l_{k,u})
-#
-#     Supports multiple branches (Remark 4.2) via num_branches parameter.
-#
-#     Implements PDEs on simplicial complexes:
-#     - Independent lower dynamics: ∂x_k,d/∂t_d = -L_k,d @ x_k,d
-#     - Independent upper dynamics: ∂x_k,u/∂t_u = -L_k,u @ x_k,u
-#     - Joint dynamics: combined diffusion across both spaces
-#
-#     Args:
-#         in_dim: Input feature dimension
-#         hidden_dim: Hidden layer dimension
-#         out_dim: Output dimension
-#         num_layers: Number of continuous layers
-#         t_d_init: Initial lower time parameter
-#         t_u_init: Initial upper time parameter
-#         learnable_t: Whether time parameters are learnable
-#         K: Number of eigenvectors for approximation (None = all)
-#         num_branches: Number of parallel branches (Remark 4.2)
-#     """
-#
-#     def __init__(
-#             self,
-#             in_dim: int,
-#             hidden_dim: int,
-#             out_dim: int,
-#             num_layers: int = 3,
-#             t_d_init: float = 0.1,
-#             t_u_init: float = 0.1,
-#             learnable_t: bool = True,
-#             K: Optional[int] = None,
-#             num_branches: int = 1,  # Remark 4.2
-#             dropout: float = 0.1
-#     ):
-#         super().__init__()
-#
-#         self.num_branches = num_branches
-#
-#         # Initial encoder
-#         self.encoder = nn.Sequential(
-#             nn.Linear(in_dim, hidden_dim),
-#             nn.ReLU(),
-#             nn.LayerNorm(hidden_dim)
-#         )
-#
-#         # ✅ MULTIPLE BRANCHES (Remark 4.2 from paper)
-#         self.branch_layers = nn.ModuleList()
-#         for _ in range(num_branches):
-#             branch = nn.ModuleList([
-#                 ContinuousCopresheafLayer(
-#                     in_dim=hidden_dim,
-#                     out_dim=hidden_dim,
-#                     k_simplex_dim=1,  # Process at edge level
-#                     t_d_init=t_d_init,
-#                     t_u_init=t_u_init,
-#                     learnable_t=learnable_t,
-#                     K=K,
-#                     use_morphisms=True
-#                 )
-#                 for _ in range(num_layers)
-#             ])
-#             self.branch_layers.append(branch)
-#
-#         # Branch aggregation (if multiple branches)
-#         if num_branches > 1:
-#             self.branch_aggregation = nn.Sequential(
-#                 nn.Linear(num_branches * hidden_dim, hidden_dim),
-#                 nn.ReLU(),
-#                 nn.Dropout(dropout)
-#             )
-#         else:
-#             self.branch_aggregation = None
-#
-#         # Layer norms
-#         self.layer_norms = nn.ModuleList([
-#             nn.LayerNorm(hidden_dim) for _ in range(num_layers)
-#         ])
-#
-#         # Final readout
-#         self.readout = nn.Sequential(
-#             nn.Linear(hidden_dim, hidden_dim * 2),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(hidden_dim * 2, hidden_dim),
-#             nn.ReLU(),
-#             nn.Dropout(dropout * 0.5),
-#             nn.Linear(hidden_dim, out_dim)
-#         )
-#
-#         self.reset_parameters()
-#
-#     def reset_parameters(self):
-#         """Initialize all model parameters including time constants."""
-#         # Initialize encoder
-#         for module in self.encoder.modules():
-#             if isinstance(module, nn.Linear):
-#                 nn.init.xavier_uniform_(module.weight)
-#                 if module.bias is not None:
-#                     nn.init.zeros_(module.bias)
-#
-#         # Initialize branch layers (will initialize their time parameters)
-#         for branch in self.branch_layers:
-#             for layer in branch:
-#                 if hasattr(layer, 'reset_parameters'):
-#                     layer.reset_parameters()
-#
-#         # Initialize readout
-#         for module in self.readout.modules():
-#             if isinstance(module, nn.Linear):
-#                 nn.init.xavier_uniform_(module.weight)
-#                 if module.bias is not None:
-#                     nn.init.zeros_(module.bias)
-#
-#         # Explicitly validate time parameters
-#         for branch in self.branch_layers:
-#             for layer in branch:
-#                 if hasattr(layer, 't_d'):
-#                     if torch.isnan(layer.t_d) or torch.isinf(layer.t_d):
-#                         layer.t_d.data = torch.tensor(0.1, dtype=torch.float32)
-#                 if hasattr(layer, 't_u'):
-#                     if torch.isnan(layer.t_u) or torch.isinf(layer.t_u):
-#                         layer.t_u.data = torch.tensor(0.1, dtype=torch.float32)
-#
-#     def forward(
-#             self,
-#             features: Dict[int, torch.Tensor],
-#             boundary_operators: Dict[int, torch.Tensor],
-#             batch: Optional[torch.Tensor] = None
-#     ) -> torch.Tensor:
-#         """
-#         Forward pass implementing COSIMO with multiple branches.
-#
-#         Args:
-#             features: {0: vertices, 1: edges, 2: triangles}
-#             boundary_operators: {1: B_1, 2: B_2}
-#             batch: Batch assignment
-#         """
-#         # Encode initial features
-#         x = self.encoder(features[0])  # Start with vertices
-#
-#         # Process through branches
-#         branch_outputs = []
-#
-#         for branch, norm in zip(self.branch_layers, self.layer_norms):
-#             x_branch = x
-#
-#             # Compute feature projections for this branch
-#             features_dict = self._compute_feature_projections(x_branch, boundary_operators)
-#
-#             for layer in branch:
-#                 # Prepare dimension features
-#                 X_k = features_dict[1]  # Edge features
-#                 X_k_down = boundary_operators[1].T @ features_dict[0]  # From vertices
-#                 X_k_up = boundary_operators.get(2) @ features_dict.get(2, torch.zeros_like(
-#                     X_k)) if 2 in boundary_operators else torch.zeros_like(X_k)
-#
-#                 # Apply continuous dynamics
-#                 x_new = layer(X_k, X_k_down, X_k_up, boundary_operators[1], boundary_operators.get(2))
-#
-#                 # Residual + norm
-#                 x_branch = norm(x_branch + x_new)
-#
-#                 # Update features for next layer
-#                 features_dict = self._compute_feature_projections(x_branch, boundary_operators)
-#
-#             branch_outputs.append(x_branch)
-#
-#         # Aggregate branches
-#         if self.branch_aggregation is not None:
-#             x = self.branch_aggregation(torch.cat(branch_outputs, dim=-1))
-#         else:
-#             x = branch_outputs[0]
-#
-#         # Graph-level pooling if needed
-#         if batch is not None:
-#             from torch_geometric.utils import scatter
-#             x = scatter(x, batch, dim=0, reduce='mean')
-#
-#         # Final readout
-#         return self.readout(x)
-#
-#     def _compute_feature_projections(
-#             self,
-#             x: torch.Tensor,
-#             boundary_operators: Dict[int, torch.Tensor]
-#     ) -> Dict[int, torch.Tensor]:
-#         """Compute lower/upper projections for each dimension."""
-#         features = {0: x}  # Start with 0-simplices (nodes)
-#
-#         # Lower projections (from k-1 to k)
-#         for k in sorted(boundary_operators.keys()):
-#             if k > 0 and (k - 1) in features:
-#                 B_k = boundary_operators[k]
-#                 features[k] = B_k.T @ features[k - 1]
-#
-#         return features
-#
-#     def get_time_constants(self) -> Dict[str, List[float]]:
-#         """Get current time parameters from all layers."""
-#         time_constants = {'t_d': [], 't_u': []}
-#
-#         for branch in self.branch_layers:
-#             for layer in branch:
-#                 if hasattr(layer, 't_d'):
-#                     time_constants['t_d'].append(layer.t_d.item())
-#                     time_constants['t_u'].append(layer.t_u.item())
-#
-#         return time_constants
-
 
 class AdaptiveContinuousSimplicialModel(nn.Module):
     """
@@ -739,15 +527,15 @@ class AdaptiveContinuousSimplicialModel(nn.Module):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            hidden_dim: int,
-            out_dim: int,
-            num_layers: int = 3,
-            num_neighborhoods: int = 3,
-            t_init: float = 0.1,
-            K: Optional[int] = None,
-            dropout: float = 0.1
+        self,
+        in_dim: int,
+        hidden_dim: int,
+        out_dim: int,
+        num_layers: int = 3,
+        num_neighborhoods: int = 3,
+        t_init: float = 0.1,
+        K: Optional[int] = None,
+        dropout: float = 0.1,
     ):
         super().__init__()
 
@@ -755,36 +543,40 @@ class AdaptiveContinuousSimplicialModel(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_dim)
+            nn.Linear(in_dim, hidden_dim), nn.ReLU(), nn.LayerNorm(hidden_dim)
         )
 
         # Layers with per-neighborhood continuous dynamics
-        self.layers = nn.ModuleList([
-            nn.ModuleDict({
-                f'neighborhood_{k}': ContinuousConv(
-                    in_dim=hidden_dim,
-                    out_dim=hidden_dim,
-                    t_d_init=t_init,
-                    t_u_init=t_init,
-                    learnable_t=True,
-                    K=K
+        self.layers = nn.ModuleList(
+            [
+                nn.ModuleDict(
+                    {
+                        f"neighborhood_{k}": ContinuousConv(
+                            in_dim=hidden_dim,
+                            out_dim=hidden_dim,
+                            t_d_init=t_init,
+                            t_u_init=t_init,
+                            learnable_t=True,
+                            K=K,
+                        )
+                        for k in range(num_neighborhoods)
+                    }
                 )
-                for k in range(num_neighborhoods)
-            })
-            for _ in range(num_layers)
-        ])
+                for _ in range(num_layers)
+            ]
+        )
 
         # Neighborhood combination
-        self.combiners = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(num_neighborhoods * hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.LayerNorm(hidden_dim)
-            )
-            for _ in range(num_layers)
-        ])
+        self.combiners = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(num_neighborhoods * hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.LayerNorm(hidden_dim),
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         self.dropout = nn.Dropout(dropout)
 
@@ -793,15 +585,15 @@ class AdaptiveContinuousSimplicialModel(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, out_dim)
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(
-            self,
-            x: torch.Tensor,
-            edge_index_list: List[torch.Tensor],
-            boundary_operators_list: List[Dict[int, torch.Tensor]],
-            batch: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        edge_index_list: list[torch.Tensor],
+        boundary_operators_list: list[dict[int, torch.Tensor]],
+        batch: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -816,17 +608,12 @@ class AdaptiveContinuousSimplicialModel(nn.Module):
             neighborhood_outputs = []
 
             for k in range(self.num_neighborhoods):
-                conv = layer_dict[f'neighborhood_{k}']
+                conv = layer_dict[f"neighborhood_{k}"]
                 edge_index = edge_index_list[k]
                 B_dict = boundary_operators_list[k]
 
                 # Apply continuous convolution
-                x_k = conv(
-                    x=x,
-                    edge_index=edge_index,
-                    B_k=B_dict.get(1),
-                    B_k_plus_1=B_dict.get(2)
-                )
+                x_k = conv(x=x, edge_index=edge_index, B_k=B_dict.get(1), B_k_plus_1=B_dict.get(2))
                 neighborhood_outputs.append(x_k)
 
             # Combine neighborhoods
@@ -838,7 +625,7 @@ class AdaptiveContinuousSimplicialModel(nn.Module):
 
         # Pooling if graph-level
         if batch is not None:
-            x = scatter(x, batch, dim=0, reduce='mean')
+            x = scatter(x, batch, dim=0, reduce="mean")
 
         return self.readout(x)
 
@@ -907,18 +694,18 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
     """
 
     def __init__(
-            self,
-            feature_dims: Dict[int, int],
-            hidden_dims: Dict[int, int],
-            out_dim: int,
-            target_dim: int = 0,
-            num_layers: int = 3,
-            t_d_init: float = 0.1,
-            t_u_init: float = 0.1,
-            learnable_t: bool = True,
-            K: Optional[int] = None,
-            dropout: float = 0.1,
-            use_morphisms: bool = True
+        self,
+        feature_dims: dict[int, int],
+        hidden_dims: dict[int, int],
+        out_dim: int,
+        target_dim: int = 0,
+        num_layers: int = 3,
+        t_d_init: float = 0.1,
+        t_u_init: float = 0.1,
+        learnable_t: bool = True,
+        K: Optional[int] = None,
+        dropout: float = 0.1,
+        use_morphisms: bool = True,
     ):
         super().__init__()
 
@@ -930,49 +717,53 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         self.out_dim = out_dim
 
         # Encoders for each dimension
-        self.encoders = nn.ModuleDict({
-            str(dim): nn.Sequential(
-                nn.Linear(feature_dims[dim], hidden_dims[dim]),
-                nn.ReLU(),
-                nn.LayerNorm(hidden_dims[dim])
-            )
-            for dim in self.dimensions
-        })
+        self.encoders = nn.ModuleDict(
+            {
+                str(dim): nn.Sequential(
+                    nn.Linear(feature_dims[dim], hidden_dims[dim]),
+                    nn.ReLU(),
+                    nn.LayerNorm(hidden_dims[dim]),
+                )
+                for dim in self.dimensions
+            }
+        )
 
         # ✅ CONTINUOUS LAYERS WITH COPRESHEAF MORPHISMS
         self.dimension_layers = nn.ModuleDict()
         for dim in self.dimensions:
-            layers = nn.ModuleList([
-                ContinuousCopresheafLayer(
-                    in_dim=hidden_dims[dim],
-                    out_dim=hidden_dims[dim],
-                    k_simplex_dim=dim,
-                    t_d_init=t_d_init,
-                    t_u_init=t_u_init,
-                    learnable_t=learnable_t,
-                    K=K,
-                    use_morphisms=use_morphisms
-                )
-                for _ in range(num_layers)
-            ])
+            layers = nn.ModuleList(
+                [
+                    ContinuousCopresheafLayer(
+                        in_dim=hidden_dims[dim],
+                        out_dim=hidden_dims[dim],
+                        k_simplex_dim=dim,
+                        t_d_init=t_d_init,
+                        t_u_init=t_u_init,
+                        learnable_t=learnable_t,
+                        K=K,
+                        use_morphisms=use_morphisms,
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
             self.dimension_layers[str(dim)] = layers
 
         # Layer norms
-        self.layer_norms = nn.ModuleDict({
-            str(dim): nn.ModuleList([
-                nn.LayerNorm(hidden_dims[dim]) for _ in range(num_layers)
-            ])
-            for dim in self.dimensions
-        })
+        self.layer_norms = nn.ModuleDict(
+            {
+                str(dim): nn.ModuleList([nn.LayerNorm(hidden_dims[dim]) for _ in range(num_layers)])
+                for dim in self.dimensions
+            }
+        )
 
         # Cross-dimensional projections
         self.cross_dim_projections = nn.ModuleDict()
         for i, dim_from in enumerate(self.dimensions[:-1]):
             dim_to = self.dimensions[i + 1]
-            self.cross_dim_projections[f'{dim_from}_to_{dim_to}'] = nn.Linear(
+            self.cross_dim_projections[f"{dim_from}_to_{dim_to}"] = nn.Linear(
                 hidden_dims[dim_from], hidden_dims[dim_to]
             )
-            self.cross_dim_projections[f'{dim_to}_to_{dim_from}'] = nn.Linear(
+            self.cross_dim_projections[f"{dim_to}_to_{dim_from}"] = nn.Linear(
                 hidden_dims[dim_to], hidden_dims[dim_from]
             )
 
@@ -986,17 +777,17 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
             nn.Linear(hidden_dims[target_dim] * 2, hidden_dims[target_dim]),
             nn.ReLU(),
             nn.Dropout(dropout * 0.5),
-            nn.Linear(hidden_dims[target_dim], out_dim)
+            nn.Linear(hidden_dims[target_dim], out_dim),
         )
 
         self.reset_parameters()
 
     def _prepare_dimension_features(
-            self,
-            features: Dict[int, torch.Tensor],
-            boundary_operators: Dict[int, torch.Tensor],
-            dim: int
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        features: dict[int, torch.Tensor],
+        boundary_operators: dict[int, torch.Tensor],
+        dim: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Prepare features for a specific dimension.
 
@@ -1016,7 +807,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
                 X_down_raw = B_k.T @ features[dim - 1]
 
                 # Apply learned projection
-                proj_key = f'{dim - 1}_to_{dim}'
+                proj_key = f"{dim - 1}_to_{dim}"
                 if proj_key in self.cross_dim_projections:
                     X_k_down = self.cross_dim_projections[proj_key](X_down_raw)
                 else:
@@ -1036,7 +827,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
                 X_up_raw = B_k_plus_1 @ features[dim + 1]
 
                 # Apply learned projection
-                proj_key = f'{dim + 1}_to_{dim}'
+                proj_key = f"{dim + 1}_to_{dim}"
                 if proj_key in self.cross_dim_projections:
                     X_k_up = self.cross_dim_projections[proj_key](X_up_raw)
                 else:
@@ -1050,10 +841,10 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         return X_k, X_k_down, X_k_up
 
     def forward(
-            self,
-            features: Dict[int, torch.Tensor],
-            boundary_operators: Dict[int, torch.Tensor],
-            batch: Optional[torch.Tensor] = None
+        self,
+        features: dict[int, torch.Tensor],
+        boundary_operators: dict[int, torch.Tensor],
+        batch: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass through multi-dimensional continuous model.
@@ -1074,8 +865,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
                 encoded[dim] = self.encoders[str(dim)](features[dim])
             else:
                 encoded[dim] = torch.zeros(
-                    1, self.hidden_dims[dim],
-                    device=next(self.parameters()).device
+                    1, self.hidden_dims[dim], device=next(self.parameters()).device
                 )
 
         # Process through layers
@@ -1124,40 +914,33 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         # Graph-level pooling if batch provided
         if batch is not None:
             from torch_geometric.utils import scatter
-            target_features = scatter(target_features, batch, dim=0, reduce='mean')
+
+            target_features = scatter(target_features, batch, dim=0, reduce="mean")
 
         # Final readout
         output = self.readout(target_features)
 
         return output
 
-    def get_time_constants(self) -> Dict[str, List[float]]:
+    def get_time_constants(self) -> dict[str, list[float]]:
         """Get current time parameters from all layers."""
-        time_constants = {'t_d': [], 't_u': []}
+        time_constants = {"t_d": [], "t_u": []}
 
         for dim_layers in self.dimension_layers.values():
             for layer in dim_layers:
-                if hasattr(layer, 't_d'):
-                    time_constants['t_d'].append(layer.t_d.item())
-                    time_constants['t_u'].append(layer.t_u.item())
+                if hasattr(layer, "t_d"):
+                    time_constants["t_d"].append(layer.t_d.item())
+                    time_constants["t_u"].append(layer.t_u.item())
 
         return time_constants
 
-    def reset_parameters(self):
-        """Initialize all parameters."""
-        for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
     @staticmethod
     def _auto_configure_dimensions(
-            num_simplices: Dict[int, int],
-            input_dim: Optional[int],
-            hidden_dim: Optional[int],
-            hidden_dim_strategy: str
-    ) -> Tuple[Dict[int, int], Dict[int, int]]:
+        num_simplices: dict[int, int],
+        input_dim: Optional[int],
+        hidden_dim: Optional[int],
+        hidden_dim_strategy: str,
+    ) -> tuple[dict[int, int], dict[int, int]]:
         """
         Automatically configure feature_dims and hidden_dims from simple inputs.
 
@@ -1182,29 +965,23 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
 
         # Feature dims: all dimensions use same input feature size
         # (This assumes features are projected/encoded to same space initially)
-        feature_dims = {dim: input_dim for dim in dimensions}
+        feature_dims = dict.fromkeys(dimensions, input_dim)
 
         # Hidden dims: scale based on strategy
-        if hidden_dim_strategy == 'uniform':
-            hidden_dims = {dim: hidden_dim for dim in dimensions}
+        if hidden_dim_strategy == "uniform":
+            hidden_dims = dict.fromkeys(dimensions, hidden_dim)
 
-        elif hidden_dim_strategy == 'decreasing':
+        elif hidden_dim_strategy == "decreasing":
             # Higher dimensions get smaller representations
             # dim 0: hidden_dim, dim 1: hidden_dim/2, dim 2: hidden_dim/4
-            hidden_dims = {
-                dim: max(hidden_dim // (2 ** dim), 16)
-                for dim in dimensions
-            }
+            hidden_dims = {dim: max(hidden_dim // (2**dim), 16) for dim in dimensions}
 
-        elif hidden_dim_strategy == 'increasing':
+        elif hidden_dim_strategy == "increasing":
             # Higher dimensions get larger representations
             max_dim = max(dimensions)
-            hidden_dims = {
-                dim: max(hidden_dim // (2 ** (max_dim - dim)), 16)
-                for dim in dimensions
-            }
+            hidden_dims = {dim: max(hidden_dim // (2 ** (max_dim - dim)), 16) for dim in dimensions}
 
-        elif hidden_dim_strategy == 'proportional':
+        elif hidden_dim_strategy == "proportional":
             # Scale hidden dim proportionally to number of simplices
             max_simplices = max(num_simplices.values())
             hidden_dims = {
@@ -1220,39 +997,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
 
         return feature_dims, hidden_dims
 
-    def reset_parameters(self):
-        """Initialize all model parameters."""
-        # Initialize encoders
-        for encoder in self.encoders.values():
-            for module in encoder.modules():
-                if isinstance(module, nn.Linear):
-                    nn.init.xavier_uniform_(module.weight)
-                    if module.bias is not None:
-                        nn.init.zeros_(module.bias)
-
-        # Initialize dimension layers
-        for layers in self.dimension_layers.values():
-            for layer in layers:
-                if hasattr(layer, 'reset_parameters'):
-                    layer.reset_parameters()
-
-        # Initialize cross-dimensional projections
-        for proj in self.cross_dim_projections.values():
-            nn.init.xavier_uniform_(proj.weight)
-            if proj.bias is not None:
-                nn.init.zeros_(proj.bias)
-
-        # Initialize readout
-        for module in self.readout.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-    def _encode_features(
-            self,
-            features: Dict[int, torch.Tensor]
-    ) -> Dict[int, torch.Tensor]:
+    def _encode_features(self, features: dict[int, torch.Tensor]) -> dict[int, torch.Tensor]:
         """Encode features for each dimension."""
         encoded = {}
         for dim in self.dimensions:
@@ -1261,17 +1006,16 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
             else:
                 # Create zero features if dimension not provided
                 encoded[dim] = torch.zeros(
-                    1, self.hidden_dims[dim],
-                    device=next(self.parameters()).device
+                    1, self.hidden_dims[dim], device=next(self.parameters()).device
                 )
         return encoded
 
     def _prepare_dimension_features(
-            self,
-            features: Dict[int, torch.Tensor],
-            boundary_operators: Dict[int, torch.Tensor],
-            dim: int
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        features: dict[int, torch.Tensor],
+        boundary_operators: dict[int, torch.Tensor],
+        dim: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Prepare features for a specific dimension including projections.
 
@@ -1295,7 +1039,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
                 X_down_raw = B_k.T @ features[dim_down]
 
                 # Apply learned projection to match dimensions
-                proj_key = f'{dim_down}_to_{dim}'
+                proj_key = f"{dim_down}_to_{dim}"
                 if proj_key in self.cross_dim_projections:
                     X_k_down = self.cross_dim_projections[proj_key](X_down_raw)
                 else:
@@ -1318,7 +1062,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
                 X_up_raw = B_k_plus_1 @ features[dim_up]
 
                 # Apply learned projection to match dimensions
-                proj_key = f'{dim_up}_to_{dim}'
+                proj_key = f"{dim_up}_to_{dim}"
                 if proj_key in self.cross_dim_projections:
                     X_k_up = self.cross_dim_projections[proj_key](X_up_raw)
                 else:
@@ -1331,10 +1075,10 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         return X_k, X_k_down, X_k_up
 
     def forward(
-            self,
-            features: Dict[int, torch.Tensor],
-            boundary_operators: Dict[int, torch.Tensor],
-            batch: Optional[torch.Tensor] = None
+        self,
+        features: dict[int, torch.Tensor],
+        boundary_operators: dict[int, torch.Tensor],
+        batch: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass through multi-dimensional continuous model.
@@ -1400,21 +1144,10 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         # Graph-level pooling if batch provided
         if batch is not None:
             from torch_geometric.utils import scatter
-            target_features = scatter(target_features, batch, dim=0, reduce='mean')
+
+            target_features = scatter(target_features, batch, dim=0, reduce="mean")
 
         # Final readout
         output = self.readout(target_features)
 
         return output
-
-    def get_time_constants(self) -> Dict[str, List[float]]:
-        """Get current time parameters from all layers."""
-        time_constants = {'t_d': [], 't_u': []}
-
-        for layers in self.dimension_layers.values():
-            for layer in layers:
-                if hasattr(layer, 't_d'):
-                    time_constants['t_d'].append(layer.t_d.item())
-                    time_constants['t_u'].append(layer.t_u.item())
-
-        return time_constants

@@ -2,8 +2,9 @@
 Data structures for simplicial complex neural networks.
 """
 
+from typing import Optional
+
 import torch
-from typing import Dict, Optional
 
 
 class SimplicialFeatures:
@@ -52,8 +53,8 @@ class SimplicialFeatures:
 
         # Handle dimension-indexed arguments (dim_0, dim_1, etc.)
         for key, value in kwargs.items():
-            if key.startswith('dim_') and value is not None:
-                dim = int(key.split('_')[1])
+            if key.startswith("dim_") and value is not None:
+                dim = int(key.split("_")[1])
                 self.features[dim] = value
 
         self.dims = {k: v.shape[-1] for k, v in self.features.items()}
@@ -69,13 +70,13 @@ class SimplicialFeatures:
         """
         kwargs = {}
         if 0 in feature_dict:
-            kwargs['vertices'] = feature_dict[0]
+            kwargs["vertices"] = feature_dict[0]
         if 1 in feature_dict:
-            kwargs['edges'] = feature_dict[1]
+            kwargs["edges"] = feature_dict[1]
         if 2 in feature_dict:
-            kwargs['triangles'] = feature_dict[2]
+            kwargs["triangles"] = feature_dict[2]
         if 3 in feature_dict:
-            kwargs['tetrahedra'] = feature_dict[3]
+            kwargs["tetrahedra"] = feature_dict[3]
 
         return cls(**kwargs)
 
@@ -95,6 +96,5 @@ class SimplicialFeatures:
         return self
 
     def __repr__(self):
-        dims_str = ", ".join([f"{k}-simplices: {v.shape}"
-                              for k, v in self.features.items()])
+        dims_str = ", ".join([f"{k}-simplices: {v.shape}" for k, v in self.features.items()])
         return f"SimplicialFeatures({dims_str})"

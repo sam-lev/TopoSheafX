@@ -85,7 +85,7 @@ class Aggregation(nn.Module):
 
         if method not in self.AGGREGATION_METHODS:
             raise ValueError(
-                f"Unknown aggregation method '{method}'. " f"Available: {self.AGGREGATION_METHODS}"
+                f"Unknown aggregation method '{method}'. Available: {self.AGGREGATION_METHODS}"
             )
 
         self.method = method

@@ -2,4 +2,4 @@
 
 from .simplicial import SimplicialFeatures
 
-__all__ = ['SimplicialFeatures']
+__all__ = ["SimplicialFeatures"]

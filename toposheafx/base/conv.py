@@ -21,11 +21,12 @@ Usage:
 >>> out = model_ho(x, [edge_index])
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
-from toposheafx.base.message_passing import MessagePassing, HigherOrderMessagePassing
 
+from toposheafx.base.message_passing import HigherOrderMessagePassing, MessagePassing
 
 
 class Conv(MessagePassing):
@@ -136,17 +137,18 @@ class Conv(MessagePassing):
         return self.update(aggr_msg, h_x)
 
 
-
 """
 Continuous simplicial convolution operations based on COSIMO methodology.
 Integrates continuous Hodge-Laplacian dynamics with copresheaf message passing.
 """
+
+
 def continuous_simplicial_conv(
-        x_k: torch.Tensor,
-        laplacian_k: torch.Tensor,
-        t: torch.Tensor,
-        K: Optional[int] = None,
-        eps: float = 1e-8
+    x_k: torch.Tensor,
+    laplacian_k: torch.Tensor,
+    t: torch.Tensor,
+    K: Optional[int] = None,
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     """
     Continuous simplicial convolution using matrix exponential: e^(-t*L) @ x
@@ -170,7 +172,7 @@ def continuous_simplicial_conv(
     # Clamp time parameter to safe range
     t_safe = torch.clamp(t, min=eps, max=100.0)
 
-    if K is None or K >= laplacian_k.size(0):
+    if K is None or laplacian_k.size(0) <= K:
         # Full matrix exponential
         # Add small epsilon to diagonal for numerical stability
         L_stable = laplacian_k + eps * torch.eye(laplacian_k.size(0), device=laplacian_k.device)
@@ -203,7 +205,7 @@ def continuous_simplicial_conv(
         result = V_K @ (exp_lambda.unsqueeze(-1) * (V_K.T @ x_k))
 
         if torch.isnan(result).any():
-            print(f"WARNING: Eigenvalue approximation produced NaN")
+            print("WARNING: Eigenvalue approximation produced NaN")
             return x_k
 
         return result
@@ -235,17 +237,17 @@ class ContinuousConv(MessagePassing):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: int,
-            t_d_init: float = 0.1,
-            t_u_init: float = 0.1,
-            learnable_t: bool = True,
-            K: Optional[int] = None,
-            edge_attr_dim: int = 0,
-            aggr: str = "sum",
-            bias: bool = True,
-            **kwargs
+        self,
+        in_dim: int,
+        out_dim: int,
+        t_d_init: float = 0.1,
+        t_u_init: float = 0.1,
+        learnable_t: bool = True,
+        K: Optional[int] = None,
+        edge_attr_dim: int = 0,
+        aggr: str = "sum",
+        bias: bool = True,
+        **kwargs,
     ):
         super().__init__(
             in_dim=in_dim,
@@ -255,7 +257,7 @@ class ContinuousConv(MessagePassing):
             copresheaf_map_factory=self._continuous_copresheaf_factory,
             message_factory=self._continuous_message_factory,
             update_factory=self._continuous_update_factory,
-            **kwargs
+            **kwargs,
         )
 
         # Continuous time parameters (learnable by default)
@@ -263,8 +265,8 @@ class ContinuousConv(MessagePassing):
             self.t_d = nn.Parameter(torch.tensor(t_d_init))
             self.t_u = nn.Parameter(torch.tensor(t_u_init))
         else:
-            self.register_buffer('t_d', torch.tensor(t_d_init))
-            self.register_buffer('t_u', torch.tensor(t_u_init))
+            self.register_buffer("t_d", torch.tensor(t_d_init))
+            self.register_buffer("t_u", torch.tensor(t_u_init))
 
         self.K = K  # Number of eigenvectors for approximation
 
@@ -276,31 +278,22 @@ class ContinuousConv(MessagePassing):
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
         self.reset_parameters()
 
     def _continuous_copresheaf_factory(self, in_dim: int, out_dim: int, edge_attr_dim: int):
         """Factory for continuous copresheaf morphism."""
         # Simpler than discrete version since continuous diffusion handles transport
-        return nn.Sequential(
-            nn.Linear(in_dim + edge_attr_dim, out_dim),
-            nn.Tanh()
-        )
+        return nn.Sequential(nn.Linear(in_dim + edge_attr_dim, out_dim), nn.Tanh())
 
     def _continuous_message_factory(self, in_dim: int, out_dim: int):
         """Factory for message combination."""
-        return nn.Sequential(
-            nn.Linear(out_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        return nn.Sequential(nn.Linear(out_dim + out_dim, out_dim), nn.ReLU())
 
     def _continuous_update_factory(self, in_dim: int, out_dim: int):
         """Factory for final update."""
-        return nn.Sequential(
-            nn.Linear(out_dim + out_dim, out_dim),
-            nn.ReLU()
-        )
+        return nn.Sequential(nn.Linear(out_dim + out_dim, out_dim), nn.ReLU())
 
     def reset_parameters(self):
         """Initialize parameters."""
@@ -314,10 +307,8 @@ class ContinuousConv(MessagePassing):
             nn.init.zeros_(self.bias)
 
     def compute_hodge_laplacians(
-            self,
-            B_k: torch.Tensor,
-            B_k_plus_1: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self, B_k: torch.Tensor, B_k_plus_1: Optional[torch.Tensor] = None
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Compute lower and upper Hodge Laplacians.
 
@@ -335,13 +326,13 @@ class ContinuousConv(MessagePassing):
         return L_k_down, L_k_up
 
     def forward(
-            self,
-            x: torch.Tensor,
-            edge_index: torch.Tensor,
-            B_k: torch.Tensor,
-            B_k_plus_1: Optional[torch.Tensor] = None,
-            edge_attr: Optional[torch.Tensor] = None,
-            size: Optional[Tuple[int, int]] = None
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        B_k: torch.Tensor,
+        B_k_plus_1: Optional[torch.Tensor] = None,
+        edge_attr: Optional[torch.Tensor] = None,
+        size: Optional[tuple[int, int]] = None,
     ) -> torch.Tensor:
         """
         Forward pass with continuous Hodge-Laplacian dynamics.
@@ -403,12 +394,13 @@ class ContinuousConv(MessagePassing):
 
         # Assume s_norm from weight norms
         s_norm = max(
-            torch.norm(self.proj_down.weight).item(),
-            torch.norm(self.proj_up.weight).item()
+            torch.norm(self.proj_down.weight).item(), torch.norm(self.proj_up.weight).item()
         )
 
         max_t = torch.log(torch.tensor(s_norm)) / (lambda_min + kappa_f)
         return max_t
+
+
 #
 # class Conv(nn.Module):
 #     """

@@ -6,15 +6,16 @@ This module provides functions for computing topological operators
 like Hodge Laplacians, boundary operators, and adjacency matrices.
 """
 
-import torch
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Union, Set
 from collections import defaultdict
+from typing import Optional, Union
+
+import numpy as np
+import torch
+
 
 def compute_hodge_laplacians(
-        boundary_operators: Dict[int, torch.Tensor],
-        normalize: bool = False
-) -> Dict[int, torch.Tensor]:
+    boundary_operators: dict[int, torch.Tensor], normalize: bool = False
+) -> dict[int, torch.Tensor]:
     """
     Compute Hodge Laplacians for each dimension of a simplicial complex.
 
@@ -91,8 +92,8 @@ def compute_hodge_laplacians(
 
 
 def compute_lower_laplacians(
-        boundary_operators: Dict[int, torch.Tensor]
-) -> Dict[int, torch.Tensor]:
+    boundary_operators: dict[int, torch.Tensor],
+) -> dict[int, torch.Tensor]:
     """
     Compute lower Hodge Laplacians: L_k_down = B_k^T @ B_k
 
@@ -118,8 +119,8 @@ def compute_lower_laplacians(
 
 
 def compute_upper_laplacians(
-        boundary_operators: Dict[int, torch.Tensor]
-) -> Dict[int, torch.Tensor]:
+    boundary_operators: dict[int, torch.Tensor],
+) -> dict[int, torch.Tensor]:
     """
     Compute upper Hodge Laplacians: L_k_up = B_{k+1} @ B_{k+1}^T
 
@@ -160,7 +161,7 @@ def compute_hodge_decomposition(boundary_ops):
     upper = compute_upper_laplacians(boundary_ops)
 
     result = {}
-    for dim in hodge.keys():
+    for dim in hodge:
         L_hodge = hodge[dim]
         L_down = lower.get(dim)
         L_up = upper.get(dim)
@@ -200,9 +201,8 @@ def _symmetric_normalize_laplacian(L: torch.Tensor, eps: float = 1e-12) -> torch
 
 
 def compute_adjacency_matrices(
-        boundary_operators: Dict[int, torch.Tensor],
-        include_self_loops: bool = False
-) -> Dict[Tuple[int, int], torch.Tensor]:
+    boundary_operators: dict[int, torch.Tensor], include_self_loops: bool = False
+) -> dict[tuple[int, int], torch.Tensor]:
     """
     Compute adjacency matrices between different simplex dimensions.
 
@@ -223,7 +223,7 @@ def compute_adjacency_matrices(
         >>> A_11 = adj_matrices[(1, 1)]  # Edge-edge adjacency
     """
     adjacencies = {}
-    dimensions = sorted(boundary_operators.keys())
+    sorted(boundary_operators.keys())
 
     # Same-dimension adjacencies (lower Laplacian -> adjacency)
     for k, B_k in boundary_operators.items():
@@ -254,8 +254,7 @@ def compute_adjacency_matrices(
 
 
 def validate_boundary_operators(
-        boundary_operators: Dict[int, torch.Tensor],
-        verbose: bool = True
+    boundary_operators: dict[int, torch.Tensor], verbose: bool = True
 ) -> bool:
     """
     Validate that boundary operators satisfy the chain complex property: B_k @ B_{k+1} = 0
@@ -308,9 +307,8 @@ def validate_boundary_operators(
 
 
 def compute_betti_numbers(
-        boundary_operators: Dict[int, torch.Tensor],
-        tolerance: float = 1e-6
-) -> Dict[int, int]:
+    boundary_operators: dict[int, torch.Tensor], tolerance: float = 1e-6
+) -> dict[int, int]:
     """
     Compute Betti numbers (topological invariants) of the simplicial complex.
 
@@ -363,11 +361,11 @@ def compute_betti_numbers(
 
 
 def adjust_model_time_parameters(
-        model,
-        boundary_operators: Dict[int, torch.Tensor],
-        safety_margin: float = 0.9,
-        verbose: bool = True
-) -> Dict[str, float]:
+    model,
+    boundary_operators: dict[int, torch.Tensor],
+    safety_margin: float = 0.9,
+    verbose: bool = True,
+) -> dict[str, float]:
     """
     Automatically adjust model's time parameters to satisfy over-smoothing conditions.
 
@@ -397,45 +395,46 @@ def adjust_model_time_parameters(
     laplacians = compute_hodge_laplacians(boundary_operators)
 
     # Get current state
-    if hasattr(model, 'get_time_constants'):
+    if hasattr(model, "get_time_constants"):
         old_time_params = model.get_time_constants()
-        old_t_d = np.mean(old_time_params['t_d']) if old_time_params['t_d'] else 0.1
-        old_t_u = np.mean(old_time_params['t_u']) if old_time_params['t_u'] else 0.1
+        old_t_d = np.mean(old_time_params["t_d"]) if old_time_params["t_d"] else 0.1
+        old_t_u = np.mean(old_time_params["t_u"]) if old_time_params["t_u"] else 0.1
     else:
         old_t_d = old_t_u = 0.1
 
     # Validate
     results = validate_time_parameters(model, laplacians, verbose=verbose)
 
-    if results['satisfies_condition']:
+    if results["satisfies_condition"]:
         return {
-            'old_t_d': old_t_d,
-            'old_t_u': old_t_u,
-            'new_t_d': old_t_d,
-            'new_t_u': old_t_u,
-            'adjusted': False,
-            'max_safe_t': results['suggested_max_t']
+            "old_t_d": old_t_d,
+            "old_t_u": old_t_u,
+            "new_t_d": old_t_d,
+            "new_t_u": old_t_u,
+            "adjusted": False,
+            "max_safe_t": results["suggested_max_t"],
         }
 
     # Calculate safe value
-    new_t = results['suggested_max_t'] * safety_margin
+    new_t = results["suggested_max_t"] * safety_margin
 
     # Apply adjustment
     with torch.no_grad():
         for module in model.modules():
-            if hasattr(module, 't_d'):
+            if hasattr(module, "t_d"):
                 module.t_d.data = torch.tensor(new_t, dtype=torch.float32, device=module.t_d.device)
-            if hasattr(module, 't_u'):
+            if hasattr(module, "t_u"):
                 module.t_u.data = torch.tensor(new_t, dtype=torch.float32, device=module.t_u.device)
 
     return {
-        'old_t_d': old_t_d,
-        'old_t_u': old_t_u,
-        'new_t_d': new_t,
-        'new_t_u': new_t,
-        'adjusted': True,
-        'max_safe_t': results['suggested_max_t']
+        "old_t_d": old_t_d,
+        "old_t_u": old_t_u,
+        "new_t_d": new_t,
+        "new_t_u": new_t,
+        "adjusted": True,
+        "max_safe_t": results["suggested_max_t"],
     }
+
 
 """
 Boundary Operator Construction Utilities for Simplicial Complexes
@@ -443,13 +442,15 @@ Boundary Operator Construction Utilities for Simplicial Complexes
 This module provides functions to construct boundary operators from various
 input formats (edge lists, triangle lists, etc.) for use in simplicial neural networks.
 """
+
+
 def compute_boundary_operators(
-        simplices: Dict[int, Union[List[Tuple], List[List], torch.Tensor, np.ndarray]],
-        oriented: bool = True,
-        dtype: torch.dtype = torch.float32,
-        device: Optional[torch.device] = None,
-        validate: bool = True
-) -> Dict[int, torch.Tensor]:
+    simplices: dict[int, Union[list[tuple], list[list], torch.Tensor, np.ndarray]],
+    oriented: bool = True,
+    dtype: torch.dtype = torch.float32,
+    device: Optional[torch.device] = None,
+    validate: bool = True,
+) -> dict[int, torch.Tensor]:
     """
     Compute boundary operators for a simplicial complex from simplex lists.
 
@@ -596,7 +597,7 @@ def compute_boundary_operators(
 
     # Determine device
     if device is None:
-        device = torch.device('cpu')
+        device = torch.device("cpu")
 
     # Step 1: Normalize input format and extract dimensions
     normalized_simplices = _normalize_simplex_input(simplices)
@@ -657,8 +658,8 @@ def compute_boundary_operators(
 
 
 def _normalize_simplex_input(
-        simplices: Dict[int, Union[List, torch.Tensor, np.ndarray]]
-) -> Dict[int, List[Tuple]]:
+    simplices: dict[int, Union[list, torch.Tensor, np.ndarray]],
+) -> dict[int, list[tuple]]:
     """
     Normalize various input formats to standard list of tuples.
 
@@ -703,9 +704,7 @@ def _normalize_simplex_input(
     return normalized
 
 
-def _build_complete_simplex_hierarchy(
-        simplices: Dict[int, List[Tuple]]
-) -> Dict[int, Set[Tuple]]:
+def _build_complete_simplex_hierarchy(simplices: dict[int, list[tuple]]) -> dict[int, set[tuple]]:
     """
     Build complete hierarchy including all lower-dimensional faces.
 
@@ -749,7 +748,7 @@ def _build_complete_simplex_hierarchy(
     return dict(all_simplices)
 
 
-def _get_all_faces_recursive(simplex: Tuple, target_dim: int) -> Set[Tuple]:
+def _get_all_faces_recursive(simplex: tuple, target_dim: int) -> set[tuple]:
     """
     Get all faces of a simplex at a specific dimension.
 
@@ -776,7 +775,7 @@ def _get_all_faces_recursive(simplex: Tuple, target_dim: int) -> Set[Tuple]:
     return faces
 
 
-def _get_faces(simplex: Tuple, oriented: bool = True) -> List[Tuple[Tuple, int]]:
+def _get_faces(simplex: tuple, oriented: bool = True) -> list[tuple[tuple, int]]:
     """
     Get all codimension-1 faces of a simplex with orientation.
 
@@ -807,7 +806,7 @@ def _get_faces(simplex: Tuple, oriented: bool = True) -> List[Tuple[Tuple, int]]
     faces = []
     vertices = list(simplex)
 
-    for i, vertex_to_remove in enumerate(vertices):
+    for _i, vertex_to_remove in enumerate(vertices):
         # Create face by removing this vertex
         face_vertices = [v for v in vertices if v != vertex_to_remove]
         face = tuple(sorted(face_vertices))
@@ -827,9 +826,7 @@ def _get_faces(simplex: Tuple, oriented: bool = True) -> List[Tuple[Tuple, int]]
 
 
 def _validate_chain_complex(
-        boundary_operators: Dict[int, torch.Tensor],
-        tolerance: float = 1e-6,
-        verbose: bool = True
+    boundary_operators: dict[int, torch.Tensor], tolerance: float = 1e-6, verbose: bool = True
 ) -> None:
     """
     Validate that boundary operators satisfy B_k @ B_{k+1} = 0.
@@ -865,12 +862,13 @@ def _validate_chain_complex(
 # Additional Utility Functions
 # ============================================================================
 
+
 def compute_boundary_operators_from_edge_index(
-        edge_index: torch.Tensor,
-        num_nodes: Optional[int] = None,
-        dtype: torch.dtype = torch.float32,
-        device: Optional[torch.device] = None
-) -> Dict[int, torch.Tensor]:
+    edge_index: torch.Tensor,
+    num_nodes: Optional[int] = None,
+    dtype: torch.dtype = torch.float32,
+    device: Optional[torch.device] = None,
+) -> dict[int, torch.Tensor]:
     """
     Compute B_1 (vertex-to-edge boundary operator) from PyTorch Geometric edge_index.
 
@@ -923,11 +921,11 @@ def compute_boundary_operators_from_edge_index(
 
 
 def infer_simplicial_complex(
-        edge_index: torch.Tensor,
-        find_triangles: bool = True,
-        find_tetrahedra: bool = False,
-        num_nodes: Optional[int] = None
-) -> Dict[int, List[Tuple]]:
+    edge_index: torch.Tensor,
+    find_triangles: bool = True,
+    find_tetrahedra: bool = False,
+    num_nodes: Optional[int] = None,
+) -> dict[int, list[tuple]]:
     """
     Infer higher-order simplices from graph edges (clique detection).
 
@@ -1014,6 +1012,7 @@ def infer_simplicial_complex(
             simplices[3] = list(tetrahedra)
 
     return simplices
+
 
 # Backward compatibility alias
 compute_laplacians = compute_hodge_laplacians
