@@ -417,7 +417,7 @@ class MessagePassing(PyGMessagePassing):
             if edge_attr.size(1) != self.edge_attr_dim:
                 raise ValueError(
                     f"Edge attribute dimension mismatch: "
-                    f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}"
+                    f"got {edge_attr.size(1)}, expected {self.edge_attr_dim}")
 
         # Step 1: Apply copresheaf morphism ρ_{j→i}: F(j) → F(i)
         if edge_attr is not None:
