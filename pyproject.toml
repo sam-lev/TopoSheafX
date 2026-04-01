@@ -85,6 +85,7 @@ exclude = [
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+    "tutorials/**/*.ipynb",
 ]
 
 [tool.ruff.lint]
@@ -107,6 +108,8 @@ ignore = [
     "E731",   # do not assign lambda expressions (sometimes needed)
     "W291",   # trailing whitespace (handled by formatter)
     "SIM108", # use ternary operator (sometimes less readable)
+    "N803",   # pep8 naming discrepency
+    "N806",   # pep8 naming discrepency
 ]
 
 [tool.ruff.lint.per-file-ignores]
