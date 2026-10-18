@@ -1109,20 +1109,17 @@ class ContinuousCHOMPNNLayer(nn.Module):
                 layer.reset_parameters()
 
         # Initialize combination layers
-        if self.combine is not None:
-            if self.combine_method == "concat":
-                # Sequential with Linear layers
-                for module in self.combine.modules():
-                    if isinstance(module, nn.Linear):
-                        nn.init.xavier_uniform_(module.weight)
-                        if module.bias is not None:
-                            nn.init.zeros_(module.bias)
-
-            elif self.combine_method == "attention":
-                # MultiheadAttention initializes itself properly
-                # But we can ensure it's reset if needed
-                if hasattr(self.combine, "_reset_parameters"):
-                    self.combine._reset_parameters()
+        if self.combine is not None and self.combine_method == "concat":
+            # Sequential with Linear layers
+            for module in self.combine.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.xavier_uniform_(module.weight)
+                    if module.bias is not None:
+                        nn.init.zeros_(module.bias)
+            # MultiheadAttention initializes itself properly
+            # But we can ensure it's reset if needed
+            elif self.combine_method == "attention" and hasattr(self.combine, "_reset_parameters"):
+                self.combine._reset_parameters()
 
         # Final validation of time parameters
         self._validate_time_parameters()

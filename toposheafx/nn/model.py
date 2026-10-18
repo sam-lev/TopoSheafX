@@ -781,7 +781,6 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         )
 
         self.reset_parameters()
-    
     def get_time_constants(self) -> dict[str, list[float]]:
         """Get current time parameters from all layers."""
         time_constants = {"t_d": [], "t_u": []}
