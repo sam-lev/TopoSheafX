@@ -463,10 +463,7 @@ class CrossDimensionalSimplicialCopresheafNetwork(nn.Module):
 
         # Initial encoders for each dimension
         self.encoders = nn.ModuleDict(
-            {
-                str(dim): nn.Linear(initial_dims[dim], hidden_dims[dim])
-                for dim in initial_dims
-            }
+            {str(dim): nn.Linear(initial_dims[dim], hidden_dims[dim]) for dim in initial_dims}
         )
 
         # Neighborhood configuration - must match extract_cross_dimensional_neighborhoods
@@ -781,6 +778,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         )
 
         self.reset_parameters()
+
     def get_time_constants(self) -> dict[str, list[float]]:
         """Get current time parameters from all layers."""
         time_constants = {"t_d": [], "t_u": []}
