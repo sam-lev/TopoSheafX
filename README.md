@@ -2,7 +2,13 @@
 
 **A PyTorch library for copresheaf-based topological deep learning on graphs, simplicial complexes, and combinatorial complexes.**
 
-TopoSheafX implements the mathematical framework introduced in *"Copresheaf Topological Neural Networks: A Generalized Deep Learning Framework"* (Hajij et al.) and extends it with the continuous dynamics of *"Continuous Simplicial Neural Networks"* (COSIMO, Einizade et al.). The library provides a clean, modular API for building neural networks that respect heterogeneous feature geometries, directional information flow, and higher-order topological structure.
+TopoSheafX implements the mathematical framework introduced in 
+*"Copresheaf Topological Neural Networks: A Generalized Deep Learning 
+Framework"* (Hajij et al.) and extends it with the continuous dynamics of 
+*"Continuous Simplicial Neural Networks"* (COSIMO, Einizade et al.) and 
+expanded on in *"Topological Neural Operators"* (TNO, Bastian, Leventhal 
+et al.). 
+The library provides a clean, modular API for building neural networks that respect heterogeneous feature geometries, directional information flow, and higher-order topological structure.
 
 ---
 
@@ -566,4 +572,6 @@ The bundled MUTAG dataset is the standard molecular graph classification benchma
 
 ---
 
-*If you use TopoSheafX in your work, please cite the two primary papers above along with this library.*
+*If you use TopoSheafX in your work, please cite the three primary papers 
+above (Hajij et al, Einizade et al., and L. Bastian, S. Leventhal et al.) 
+along with this library.*
