@@ -737,13 +737,11 @@ def _build_complete_simplex_hierarchy(simplices: dict[int, list[tuple]]) -> dict
             faces = _get_all_faces_recursive(simplex, target_dim=dim - 1)
             all_simplices[dim - 1].update(faces)
 
-    # Ensure vertices (0-simplices) exist
-    if 0 not in all_simplices and len(all_simplices) > 0:
-        # Extract vertices from dimension 1
-        if 1 in all_simplices:
-            for edge in all_simplices[1]:
-                for vertex in edge:
-                    all_simplices[0].add((vertex,))
+    # Ensure vertices (0-simplices) exist extract verts from dimension 1
+    if 0 not in all_simplices and len(all_simplices) > 0 and 1 in all_simplices:
+        for edge in all_simplices[1]:
+            for vertex in edge:
+                all_simplices[0].add((vertex,))
 
     return dict(all_simplices)
 

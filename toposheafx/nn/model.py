@@ -14,8 +14,8 @@ from torch import nn
 from torch_geometric.utils import scatter
 
 from toposheafx.base.aggregation import Aggregation
-from toposheafx.base.message_passing import HigherOrderMessagePassing
 from toposheafx.base.conv import ContinuousConv
+from toposheafx.base.message_passing import HigherOrderMessagePassing
 from toposheafx.data.simplicial import SimplicialFeatures
 from toposheafx.nn.layer import (
     CHOMPNNLayer,
@@ -781,147 +781,7 @@ class ContinuousCopresheafSimplicialModel(nn.Module):
         )
 
         self.reset_parameters()
-
-    def _prepare_dimension_features(
-        self,
-        features: dict[int, torch.Tensor],
-        boundary_operators: dict[int, torch.Tensor],
-        dim: int,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Prepare features for a specific dimension.
-
-        Returns:
-            X_k: Current dimension features
-            X_k_down: Features from dimension k-1
-            X_k_up: Features from dimension k+1
-        """
-        X_k = features[dim]
-
-        # ✅ LOWER FEATURES (k-1 -> k) - Handle dimension 0
-        if dim > 0 and (dim - 1) in features:
-            B_k = boundary_operators.get(dim)
-
-            if B_k is not None:
-                # Project from lower dimension
-                X_down_raw = B_k.T @ features[dim - 1]
-
-                # Apply learned projection
-                proj_key = f"{dim - 1}_to_{dim}"
-                if proj_key in self.cross_dim_projections:
-                    X_k_down = self.cross_dim_projections[proj_key](X_down_raw)
-                else:
-                    X_k_down = X_down_raw
-            else:
-                X_k_down = torch.zeros_like(X_k)
-        else:
-            # Dimension 0: no lower neighbors
-            X_k_down = torch.zeros_like(X_k)
-
-        # ✅ UPPER FEATURES (k+1 -> k)
-        if dim < max(self.dimensions) and (dim + 1) in features:
-            B_k_plus_1 = boundary_operators.get(dim + 1)
-
-            if B_k_plus_1 is not None:
-                # Project from upper dimension
-                X_up_raw = B_k_plus_1 @ features[dim + 1]
-
-                # Apply learned projection
-                proj_key = f"{dim + 1}_to_{dim}"
-                if proj_key in self.cross_dim_projections:
-                    X_k_up = self.cross_dim_projections[proj_key](X_up_raw)
-                else:
-                    X_k_up = X_up_raw
-            else:
-                X_k_up = torch.zeros_like(X_k)
-        else:
-            # Top dimension: no upper neighbors
-            X_k_up = torch.zeros_like(X_k)
-
-        return X_k, X_k_down, X_k_up
-
-    def forward(
-        self,
-        features: dict[int, torch.Tensor],
-        boundary_operators: dict[int, torch.Tensor],
-        batch: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """
-        Forward pass through multi-dimensional continuous model.
-
-        Args:
-            features: Dict mapping dimension to features
-            boundary_operators: Dict mapping dimension k to boundary operator B_k
-                               Note: B_k maps from (k-1)-simplices to k-simplices
-            batch: Optional batch assignment for graph-level tasks
-
-        Returns:
-            Output predictions from target dimension
-        """
-        # Encode features for each dimension
-        encoded = {}
-        for dim in self.dimensions:
-            if dim in features and features[dim] is not None:
-                encoded[dim] = self.encoders[str(dim)](features[dim])
-            else:
-                encoded[dim] = torch.zeros(
-                    1, self.hidden_dims[dim], device=next(self.parameters()).device
-                )
-
-        # Process through layers
-        for layer_idx in range(self.num_layers):
-            updated_features = {}
-
-            for dim in self.dimensions:
-                # Get layer and norm for this dimension
-                layer = self.dimension_layers[str(dim)][layer_idx]
-                norm = self.layer_norms[str(dim)][layer_idx]
-
-                # Prepare features with cross-dimensional information
-                X_k, X_k_down, X_k_up = self._prepare_dimension_features(
-                    encoded, boundary_operators, dim
-                )
-
-                # ✅ GET BOUNDARY OPERATORS (None for dimension 0)
-                B_k = boundary_operators.get(dim)  # Can be None for dim 0
-                B_k_plus_1 = boundary_operators.get(dim + 1)  # Can be None for top dim
-
-                try:
-                    # Apply continuous copresheaf layer
-                    X_k_new = layer(X_k, X_k_down, X_k_up, B_k, B_k_plus_1)
-
-                    # Residual connection + normalization
-                    if X_k.shape == X_k_new.shape:
-                        updated_features[dim] = norm(X_k + self.dropout(X_k_new))
-                    else:
-                        updated_features[dim] = norm(X_k_new)
-
-                    # Check for NaN
-                    if torch.isnan(updated_features[dim]).any():
-                        print(f"⚠️ NaN detected at dimension {dim}, layer {layer_idx}")
-                        updated_features[dim] = X_k
-
-                except RuntimeError as e:
-                    print(f"⚠️ ERROR at dimension {dim}, layer {layer_idx}: {e}")
-                    updated_features[dim] = X_k
-
-            # Update for next layer
-            encoded = updated_features
-
-        # Get features from target dimension
-        target_features = encoded[self.target_dim]
-
-        # Graph-level pooling if batch provided
-        if batch is not None:
-            from torch_geometric.utils import scatter
-
-            target_features = scatter(target_features, batch, dim=0, reduce="mean")
-
-        # Final readout
-        output = self.readout(target_features)
-
-        return output
-
+    
     def get_time_constants(self) -> dict[str, list[float]]:
         """Get current time parameters from all layers."""
         time_constants = {"t_d": [], "t_u": []}
