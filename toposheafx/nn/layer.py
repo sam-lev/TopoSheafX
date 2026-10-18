@@ -1116,10 +1116,10 @@ class ContinuousCHOMPNNLayer(nn.Module):
                     nn.init.xavier_uniform_(module.weight)
                     if module.bias is not None:
                         nn.init.zeros_(module.bias)
-            # MultiheadAttention initializes itself properly
-            # But we can ensure it's reset if needed
-            elif self.combine_method == "attention" and hasattr(self.combine, "_reset_parameters"):
-                self.combine._reset_parameters()
+                # MultiheadAttention initializes itself properly
+                # But we can ensure it's reset if needed
+                elif self.combine_method == "attention" and hasattr(self.combine, "_reset_parameters"):
+                    self.combine._reset_parameters()
 
         # Final validation of time parameters
         self._validate_time_parameters()
