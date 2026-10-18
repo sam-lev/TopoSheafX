@@ -96,7 +96,7 @@ TopoSheafX targets Python 3.10+ and depends on PyTorch and PyTorch Geometric.
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/sam-lev/TopoSheafX.git
 cd toposheafx
 
 # Option A: editable install via pip
