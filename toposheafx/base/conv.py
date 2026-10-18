@@ -568,7 +568,6 @@ class HigherOrderConv(HigherOrderMessagePassing):
         bias=True,
         **kwargs,
     ):
-
         if edge_map is None:
             edge_map = Conv
 

@@ -67,7 +67,8 @@ def check_oversmoothing_condition(
                 warnings.warn(
                     f"Over-smoothing risk at dimension {k}: "
                     f"t={current_t:.4f} exceeds safe threshold {max_t:.4f}. "
-                    f"Consider reducing time parameters or network depth.", stacklevel=2
+                    f"Consider reducing time parameters or network depth.",
+                    stacklevel=2,
                 )
 
     return diagnostics
@@ -260,7 +261,9 @@ def validate_time_parameters(
         time_params = {"t_d": avg_t_d, "t_u": avg_t_u}
     else:
         warnings.warn(
-            "Model does not have get_time_constants method. Using default t=0.1", UserWarning, stacklevel=2
+            "Model does not have get_time_constants method. Using default t=0.1",
+            UserWarning,
+            stacklevel=2,
         )
         time_params = {"t_d": 0.1, "t_u": 0.1}
 
