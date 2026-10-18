@@ -122,7 +122,7 @@ def analyze_smoothing_rate(
         # This is simplified - adjust based on actual model interface
         try:
             x = model.layers[layer_idx % len(model.layers)](x)
-        except (TypeError, RuntimeError) as e:
+        except (TypeError, RuntimeError):
             break
 
     return energy_evolution
